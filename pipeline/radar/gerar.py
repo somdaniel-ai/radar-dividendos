@@ -11,12 +11,15 @@ import argparse
 import datetime as dt
 import json
 import logging
+import os
 import re
 import sys
 import time
 import unicodedata
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+import requests
 
 from . import universo as uni
 from .analisar import analisar
@@ -25,7 +28,7 @@ from .fornecedores import ErroFornecedor, Fornecedor
 from .fornecedores.yahoo import Yahoo
 from .parametros import parametros
 from .traducoes import CacheTraducoes, Termos, Tradutor
-from .tradutores import criar_tradutor
+from .tradutores import criar_tradutor, limite_mensal
 
 log = logging.getLogger("radar")
 RAIZ = Path(__file__).resolve().parents[2]
@@ -83,6 +86,35 @@ def _descobrir(f: Fornecedor, cache: Cache, item: dict, hoje: dt.date, pasta_uni
     raise ErroFornecedor("Símbolo não encontrado no Yahoo")
 
 
+URL_PUBLICA = os.environ.get("RADAR_URL_PUBLICA", "https://somdaniel-ai.github.io/radar-dividendos/data/")
+
+
+def _traducoes_guardadas(saida: Path, pasta_cache: Path) -> dict | None:
+    """Traduções já feitas, se a cache local não as tiver: cópia em data/ ou no site publicado."""
+    if (pasta_cache / "traducoes.json").exists():
+        return None  # a cache local é lida pelo próprio CacheTraducoes
+    local = _ler_json(saida / "traducoes.json", None)
+    if local:
+        return local
+    if not URL_PUBLICA:
+        return None
+    try:
+        r = requests.get(URL_PUBLICA + "traducoes.json", timeout=20)
+        if r.ok:
+            log.info("Traduções recuperadas do site publicado")
+            return r.json()
+    except (requests.RequestException, ValueError) as e:
+        log.info("Sem traduções publicadas para recuperar: %s", e)
+    return None
+
+
+def _aplicar_descricao(detalhe: dict, desc: dict) -> None:
+    detalhe["descricao"] = desc["texto"]
+    detalhe["descricao_original"] = desc["original"] if desc["estado"] == "traduzida" else None
+    detalhe["descricao_estado"] = desc["estado"]
+    detalhe["descricao_servico"] = desc["servico"]
+
+
 def _em_portugues(perfil: dict, termos: Termos) -> dict:
     """Setor, indústria, país e tipo em português (tabela fixa); guarda os originais."""
     return {
@@ -132,7 +164,10 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     extras = uni.ler_extraordinarios(pasta_universo)
     rejeitados = uni.ler_rejeitados(pasta_universo)
     termos = Termos()
-    trad = CacheTraducoes(cache.pasta, tradutor if tradutor is not None else criar_tradutor())
+    trad = CacheTraducoes(cache.pasta, tradutor if tradutor is not None else criar_tradutor(),
+                          limite_mensal=limite_mensal(), mes=hoje.strftime("%Y-%m"),
+                          dados_iniciais=_traducoes_guardadas(saida, cache.pasta))
+    pendentes_traducao: dict[str, str] = {}
 
     todos = uni.ler_universo(pasta_universo)
     no_universo = {i["ticker_xtb"] for i in todos}
@@ -165,11 +200,12 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
             fx = f.obter_cambio(perfil.get("moeda"))
             r = analisar(item, precos, div, perfil, fx, hoje, p, extras.get(t),
                          _cotacao_xtb(f, cache, item, agora), rejeitados.get(t))
-            desc = trad.descricao(t, perfil.get("descricao"))
-            r["detalhe"]["descricao"] = desc["texto"]
-            r["detalhe"]["descricao_original"] = desc["original"] if desc["estado"] == "traduzida" else None
-            r["detalhe"]["descricao_estado"] = desc["estado"]
-            r["detalhe"]["descricao_servico"] = desc["servico"]
+            # nesta fase só se usam traduções já guardadas; as novas são pedidas no fim,
+            # pela ordem da pontuação (as ações do topo do radar primeiro)
+            desc = trad.descricao(t, perfil.get("descricao"), so_cache=True)
+            _aplicar_descricao(r["detalhe"], desc)
+            if desc["estado"] == "indisponivel":
+                pendentes_traducao[t] = perfil["descricao"]
         except Exception as e:  # noqa: BLE001 — uma ação nunca pode parar o pipeline
             log.error("%s: %s", t, e)
             erros.append({"ticker": t, "ticker_yahoo": item.get("ticker_yahoo"), "erro": str(e)})
@@ -198,6 +234,21 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     resumos = sorted(resultado.values(), key=lambda x: x["pontuacao"]["total"], reverse=True)
     for i, r in enumerate(resumos, 1):
         r["posicao_ranking"] = i
+
+    # traduções novas: primeiro as ações com melhor pontuação, até aos limites de segurança
+    for r in resumos:
+        t = r["ticker"]
+        if t not in pendentes_traducao or t not in novos:
+            continue
+        desc = trad.descricao(t, pendentes_traducao[t])
+        if desc["estado"] == "traduzida":
+            ficheiro = saida / "acoes" / f"{t}.json"
+            detalhe = _ler_json(ficheiro, None)
+            if detalhe:
+                _aplicar_descricao(detalhe, desc)
+                _escrever(ficheiro, detalhe)
+        if trad.parado:
+            break
 
     if parcial:
         sem_dividendos = sorted((set(antigo_meta.get("sem_dividendos_recentes", [])) - processados)
@@ -228,10 +279,12 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     suspeitos = [{"ticker": r["ticker"], "nome": r["nome"], "moeda": r["moeda"], **s}
                  for r in resumos for s in r.get("extraordinarios_suspeitos", [])]
     meta["total_extraordinarios_suspeitos"] = len(suspeitos)
-    trad.guardar()
-    meta["traducoes"] = {"servico": trad.tradutor.nome if trad.tradutor else "nenhum",
-                         "traduzidas_nesta_execucao": trad.traduzidas_agora, "falhas": trad.falhas_agora,
-                         "em_cache": len(trad.dados)}
+    # a cópia pública (data/traducoes.json) permite recuperar as traduções e a contagem do mês
+    # se a cache local do GitHub se perder, sem gastar a quota outra vez
+    trad.guardar(copia_publica=saida / "traducoes.json")
+    meta["traducoes"] = trad.resumo()
+    meta["traducoes"]["por_traduzir"] = sum(1 for r in resumos if r["ticker"] in pendentes_traducao
+                                            and r["ticker"] not in trad.dados["descricoes"])
     meta["termos_sem_traducao"] = termos.relatorio()
     _escrever(saida / "extraordinarios_suspeitos.json", {"gerado_em": meta["gerado_em"], "suspeitos": suspeitos})
     _escrever(saida / "radar.json", {"gerado_em": meta["gerado_em"], "acoes": resumos})

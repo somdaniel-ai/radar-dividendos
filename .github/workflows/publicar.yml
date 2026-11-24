@@ -49,6 +49,12 @@ jobs:
 
       - name: Descarregar dados e calcular
         working-directory: pipeline
+        env:
+          # tradução das descrições (a chave vem dos segredos do GitHub; sem chave, ficam em inglês)
+          RADAR_TRADUTOR: azure
+          AZURE_TRANSLATOR_KEY: ${{ secrets.AZURE_TRANSLATOR_KEY }}
+          AZURE_TRANSLATOR_REGION: ${{ secrets.AZURE_TRANSLATOR_REGION }}
+          RADAR_TRADUCAO_LIMITE_MES: "1500000"
         run: python -m radar.gerar
 
       - uses: actions/setup-node@v4

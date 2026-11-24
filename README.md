@@ -155,7 +155,12 @@ A lista completa fica em `data/extraordinarios_suspeitos.json`.
 
 - **Setores, indústrias, países e tipos de instrumento** são traduzidos com uma tabela fixa, em `pipeline/radar/traducoes.py`. Termos novos que não estejam na tabela ficam em inglês e aparecem em `data/meta.json` ("termos_sem_traducao").
 - A tabela de impostos por país usa os nomes em português (ex.: "Estados Unidos", "Canadá").
-- **Descrições das empresas:** são traduzidas uma vez por empresa e guardadas em cache (`pipeline/cache/traducoes.json`). Só voltam a ser traduzidas se o texto original mudar. Se a tradução falhar, a app mostra o original com a nota "tradução indisponível" e a tradução é tentada de novo na atualização seguinte. *(O serviço de tradução ainda está por escolher.)*
+- **Descrições das empresas:** são traduzidas uma vez por empresa e guardadas em cache (`pipeline/cache/traducoes.json`). Só voltam a ser traduzidas se o texto original mudar. Se a tradução falhar, a app mostra o original com a nota "tradução indisponível" e a tradução é tentada de novo na atualização seguinte. 
+  - **Serviço:** Microsoft Azure AI Translator, plano **F0 - Free**, de inglês para português de Portugal. A chave e a região ficam só nos segredos do GitHub (`AZURE_TRANSLATOR_KEY`, `AZURE_TRANSLATOR_REGION`).
+  - **Limites de segurança:** 1,5 milhões de caracteres por mês (o plano grátis dá 2 milhões; o código nunca aceita mais de 1,9 milhões) e 300 mil por execução. Se o Azure disser que a quota acabou, o pipeline deixa de pedir até à execução seguinte.
+  - **Prioridade:** primeiro as ações com melhor pontuação no radar.
+  - **Estado:** `data/meta.json` → "traducoes" mostra o que foi traduzido, quantos caracteres foram usados no mês e quantas descrições faltam.
+  - **Cópia pública:** as traduções e a contagem do mês ficam também em `data/traducoes.json`, publicada com a app. Assim, se a cache do GitHub se perder, recuperam-se sem gastar quota outra vez.
 
 ### Atualização parcial e falhas
 

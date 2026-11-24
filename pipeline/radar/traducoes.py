@@ -267,48 +267,110 @@ class Tradutor:
         raise NotImplementedError
 
 
-class CacheTraducoes:
-    """Guarda as traduções em `pasta/traducoes.json`: {ticker: {hash, original, pt, servico}}.
+class QuotaEsgotada(Exception):
+    """O serviço disse que a quota (gratuita) acabou: parar de pedir nesta execução."""
 
-    Só traduz de novo quando o texto original muda (hash diferente). Se a tradução falhar
-    (ou não houver serviço configurado), devolve o original com estado "indisponivel" e
-    volta a tentar na atualização seguinte. Um limite de caracteres por execução protege a
-    quota gratuita do serviço.
+
+# Limites de segurança (o plano gratuito F0 do Azure dá 2 milhões de caracteres por mês)
+LIMITE_MENSAL_PADRAO = 1_500_000
+LIMITE_MENSAL_MAXIMO = 1_900_000  # nunca se aceita um limite mais alto do que este
+LIMITE_EXECUCAO_PADRAO = 300_000
+
+
+class CacheTraducoes:
+    """Guarda as traduções em `pasta/traducoes.json`:
+        {"versao": 2, "uso_mensal": {"2026-11": 123456}, "descricoes": {ticker: {hash, pt, servico}}}
+
+    - Só traduz de novo quando o texto original muda (hash diferente).
+    - Se a tradução falhar (ou não houver serviço), devolve o original com estado
+      "indisponivel" e volta a tentar na atualização seguinte.
+    - Limites: por execução e por mês (contados em caracteres do texto original, como o
+      Azure conta). Ao chegar ao limite, ou se o serviço disser que a quota acabou, deixa
+      de pedir traduções até à execução/mês seguinte.
     """
 
-    def __init__(self, pasta: Path, tradutor: Tradutor | None, max_caracteres: int = 200_000):
+    def __init__(self, pasta: Path, tradutor: Tradutor | None, max_caracteres: int = LIMITE_EXECUCAO_PADRAO,
+                 limite_mensal: int = LIMITE_MENSAL_PADRAO, mes: str | None = None, dados_iniciais: dict | None = None):
         self.ficheiro = Path(pasta) / "traducoes.json"
         self.tradutor = tradutor
-        self.restante = max_caracteres
-        self.dados: dict = {}
+        self.restante_execucao = max_caracteres
+        self.limite_mensal = min(int(limite_mensal), LIMITE_MENSAL_MAXIMO)
+        self.mes = mes or __import__("datetime").date.today().strftime("%Y-%m")
+        self.dados = {"versao": 2, "uso_mensal": {}, "descricoes": {}}
+        bruto = None
         if self.ficheiro.exists():
             try:
-                self.dados = json.loads(self.ficheiro.read_text(encoding="utf-8"))
+                bruto = json.loads(self.ficheiro.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
-                self.dados = {}
+                bruto = None
+        if bruto is None and dados_iniciais:
+            bruto = dados_iniciais  # ex.: cópia publicada no site, se a cache local se perdeu
+        if isinstance(bruto, dict):
+            if bruto.get("versao") == 2:
+                self.dados.update(bruto)
+            else:  # formato antigo: {ticker: {...}}
+                self.dados["descricoes"] = {k: v for k, v in bruto.items() if isinstance(v, dict)}
+        self.parado = False
         self.traduzidas_agora = 0
         self.falhas_agora = 0
+        self.caracteres_agora = 0
 
-    def descricao(self, ticker: str, original: str | None) -> dict:
-        """{'texto', 'original', 'estado': 'traduzida'|'indisponivel'|'vazia', 'servico'}"""
+    @property
+    def usado_no_mes(self) -> int:
+        return int(self.dados["uso_mensal"].get(self.mes, 0))
+
+    def _cabe(self, n: int) -> bool:
+        return n <= self.restante_execucao and self.usado_no_mes + n <= self.limite_mensal
+
+    def descricao(self, ticker: str, original: str | None, so_cache: bool = False) -> dict:
+        """{'texto', 'original', 'estado': 'traduzida'|'indisponivel'|'vazia', 'servico'}
+
+        `so_cache=True`: não pede nada ao serviço (usa só traduções já guardadas)."""
         if not original:
             return {"texto": None, "original": None, "estado": "vazia", "servico": None}
         h = _hash(original)
-        g = self.dados.get(ticker)
+        g = self.dados["descricoes"].get(ticker)
         if g and g.get("hash") == h and g.get("pt"):
             return {"texto": g["pt"], "original": original, "estado": "traduzida", "servico": g.get("servico")}
-        if self.tradutor and self.tradutor.disponivel and len(original) <= self.restante:
+        n = len(original)
+        if (not so_cache and not self.parado and self.tradutor and self.tradutor.disponivel and self._cabe(n)):
             try:
                 pt = self.tradutor.traduzir(original)
-                self.restante -= len(original)
-                self.dados[ticker] = {"hash": h, "pt": pt, "servico": self.tradutor.nome}
+                self._contar(n)
+                self.dados["descricoes"][ticker] = {"hash": h, "pt": pt, "servico": self.tradutor.nome}
                 self.traduzidas_agora += 1
                 return {"texto": pt, "original": original, "estado": "traduzida", "servico": self.tradutor.nome}
+            except QuotaEsgotada as e:
+                log.warning("Quota de tradução esgotada (%s): sem mais traduções nesta execução", e)
+                self.parado = True
+                self.falhas_agora += 1
             except Exception as e:  # noqa: BLE001 — qualquer falha: mostra o original e tenta depois
                 log.warning("%s: tradução falhou: %s", ticker, e)
                 self.falhas_agora += 1
         return {"texto": original, "original": original, "estado": "indisponivel", "servico": None}
 
-    def guardar(self) -> None:
+    def _contar(self, n: int) -> None:
+        self.restante_execucao -= n
+        self.caracteres_agora += n
+        self.dados["uso_mensal"][self.mes] = self.usado_no_mes + n
+
+    def resumo(self) -> dict:
+        return {
+            "servico": self.tradutor.nome if self.tradutor else "nenhum",
+            "traduzidas_nesta_execucao": self.traduzidas_agora,
+            "caracteres_nesta_execucao": self.caracteres_agora,
+            "falhas": self.falhas_agora,
+            "em_cache": len(self.dados["descricoes"]),
+            "mes": self.mes,
+            "caracteres_usados_no_mes": self.usado_no_mes,
+            "limite_mensal": self.limite_mensal,
+            "quota_esgotada": self.parado,
+        }
+
+    def guardar(self, copia_publica: Path | None = None) -> None:
+        texto = json.dumps(self.dados, ensure_ascii=False)
         self.ficheiro.parent.mkdir(parents=True, exist_ok=True)
-        self.ficheiro.write_text(json.dumps(self.dados, ensure_ascii=False), encoding="utf-8")
+        self.ficheiro.write_text(texto, encoding="utf-8")
+        if copia_publica:
+            copia_publica.parent.mkdir(parents=True, exist_ok=True)
+            copia_publica.write_text(texto, encoding="utf-8")
