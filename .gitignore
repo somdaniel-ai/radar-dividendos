@@ -42,6 +42,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 pipeline/cache/
+pipeline/modelos/
 pipeline/.cache/
 
 # Dados gerados pelo pipeline (publicados pelo GitHub Actions, não guardados no Git)
@@ -64,3 +65,4 @@ desktop.ini
 
 # Instruções do projeto (contêm o número de conta da XTB)
 PROMPT_CLAUDE_CODE.md
+pipeline/universo/descobertos.csv

@@ -35,6 +35,15 @@ describe('páginas', () => {
     expect(html).toContain('WU.US')
     expect(html).toContain('Fundos fechados')
   })
+  it('Radar (PC): títulos fixos no topo e ação fixa à esquerda, ordenação mantém-se', () => {
+    const html = desenhar(<Radar />)
+    const titulos = html.match(/<th [^>]*>/g) ?? []
+    expect(titulos.length).toBeGreaterThan(5)
+    expect(titulos.every(t => /sticky top-0/.test(t))).toBe(true)
+    expect(titulos.filter(t => /left-/.test(t)).length).toBe(2) // estrela + ação
+    expect(html).toMatch(/<td class="[^"]*sticky[^"]*left-10/)
+    expect(html).toContain('aria-sort="descending"') // continua ordenado por pontos
+  })
   it('Favoritos', () => expect(desenhar(<Radar soFavoritos />)).toContain('KO.US'))
   it('Definições', () => {
     const html = desenhar(<Definicoes />)
@@ -55,6 +64,18 @@ describe('páginas', () => {
       expect(html).toContain('Porque recebeu este nível')
     })
   }
+
+  // o texto em inglês fica marcado como inglês, para o browser poder oferecer a sua tradução
+  const umaAcao = Object.values(ficheiros)[0]
+  it('descrição por traduzir está marcada como inglês', () => {
+    const html = desenhar(<VistaAcao dados={{ ...umaAcao, descricao: 'Makes drinks.', descricao_original: 'Makes drinks.', descricao_estado: 'indisponivel' }} />)
+    expect(html).toMatch(/lang="en"[^>]*>Makes drinks\./)
+  })
+  it('descrição traduzida está marcada como pt-PT', () => {
+    const html = desenhar(<VistaAcao dados={{ ...umaAcao, descricao: 'Faz bebidas.', descricao_original: 'Makes drinks.', descricao_estado: 'traduzida' }} />)
+    expect(html).toMatch(/lang="pt-PT"[^>]*>Faz bebidas\./)
+    expect(html).toContain('ver original')
+  })
 })
 
 describe('decisões sobre extraordinários', () => {

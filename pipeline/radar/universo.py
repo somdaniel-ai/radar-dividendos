@@ -97,8 +97,80 @@ def ler_universo(pasta: Path = PASTA, so_ativos: bool = True) -> list[dict]:
             continue
         yahoo = r.get("ticker_yahoo") or converter(t, sufixos, descobertos)
         out.append({"ticker_xtb": t, "nome": r.get("nome", ""), "tipo": (r.get("tipo") or "ACAO").upper(),
-                    "ticker_yahoo": yahoo,
+                    "ticker_yahoo": yahoo, "ticker_yahoo_forcado": bool(r.get("ticker_yahoo")),
                     # símbolo Yahoo da linha que existe na XTB (ex.: TU.US → TU); só é diferente
                     # de ticker_yahoo quando os dados vêm de outra bolsa (ex.: T.TO)
                     "ticker_yahoo_xtb": converter(t, sufixos) if r.get("ticker_yahoo") else yahoo})
     return out
+
+
+# --------------------------------------------------------------------------------------
+# Universo completo = lista manual (universo_xtb.csv) + lista oficial da XTB (radar/xtb.py)
+# --------------------------------------------------------------------------------------
+
+# Bolsa "de casa" para cada país do ISIN: quando a mesma empresa está em várias bolsas na XTB,
+# usamos a de casa (dados mais completos no Yahoo). As canadianas estão na XTB em Nova Iorque.
+CASA = {"US": ".US", "CA": ".US", "GB": ".UK", "DE": ".DE", "FR": ".FR", "ES": ".ES", "IT": ".IT",
+        "NL": ".NL", "BE": ".BE", "PT": ".PT", "PL": ".PL", "CH": ".CH", "DK": ".DK", "SE": ".SE",
+        "NO": ".NO", "FI": ".FI", "CZ": ".CZ", "IL": ".IL", "AT": ".DE", "IE": ".UK", "LU": ".DE"}
+# ETF: preferimos a linha em euros (a conta é em euros: evita a comissão de conversão de moeda)
+ORDEM_ETF = [".DE", ".NL", ".FR", ".IT", ".ES", ".UK", ".US"]
+
+
+def _preferencia(d: dict) -> tuple:
+    suf = "." + d["ticker_xtb"].rsplit(".", 1)[-1]
+    if d["tipo"] == "ETF":
+        return (0 if d.get("moeda") == "EUR" else 1,
+                ORDEM_ETF.index(suf) if suf in ORDEM_ETF else 99, d["ticker_xtb"])
+    casa = CASA.get(d["isin"][:2])
+    return (0 if suf == casa else 1, 0 if suf == ".US" else 1, d["ticker_xtb"])
+
+
+def universo_completo(pasta: Path = PASTA, lista_xtb: list[dict] | None = None) -> tuple[list[dict], dict]:
+    """Junta a lista manual com a lista oficial da XTB.
+
+    - A lista manual manda: as suas linhas (e os símbolos forçados) ficam como estão, e uma
+      linha com `ativo=nao` tira esse instrumento do radar mesmo que esteja na lista da XTB.
+    - Da lista da XTB entram ações e ETF de distribuição (ou sem indicação); ficam de fora
+      os ETF de acumulação e os ETC/ETN (não pagam dividendos).
+    - Cada empresa/fundo (ISIN) entra uma só vez, na bolsa preferida.
+    - Ações canadianas em Nova Iorque: dividendos de Toronto (.TO), cotação da linha da XTB.
+    """
+    manuais = ler_universo(pasta)
+    todos_csv = {r["ticker_xtb"].upper() for r in ler_csv(pasta / "universo_xtb.csv")}
+    sufixos = ler_sufixos(pasta)
+    itens = [{**m, "origem": "manual"} for m in manuais]
+    resumo = {"manual": len(itens), "lista_xtb": len(lista_xtb or []),
+              "excluidos": {"etf_acumulacao": 0, "etc_etn": 0, "outra_bolsa": 0, "na_lista_manual": 0,
+                            "bolsa_desconhecida": 0}}
+    candidatos = []
+    for d in lista_xtb or []:
+        if d["tipo"] in ("ETC", "ETN"):
+            resumo["excluidos"]["etc_etn"] += 1
+        elif d["tipo"] == "ETF" and d.get("distribuicao") == "Acc":
+            resumo["excluidos"]["etf_acumulacao"] += 1
+        else:
+            candidatos.append(d)
+    por_isin: dict[str, list[dict]] = {}
+    for d in candidatos:
+        por_isin.setdefault(d["isin"], []).append(d)
+    for isin, grupo in por_isin.items():
+        if any(d["ticker_xtb"] in todos_csv for d in grupo):
+            resumo["excluidos"]["na_lista_manual"] += len(grupo)  # já está (ou foi desligada) na lista manual
+            continue
+        grupo.sort(key=_preferencia)
+        d = grupo[0]
+        resumo["excluidos"]["outra_bolsa"] += len(grupo) - 1
+        yahoo = converter(d["ticker_xtb"], sufixos)
+        if yahoo is None:
+            resumo["excluidos"]["bolsa_desconhecida"] += 1
+            continue
+        item = {"ticker_xtb": d["ticker_xtb"], "nome": d["nome"], "tipo": "ETF" if d["tipo"] == "ETF" else "ACAO",
+                "ticker_yahoo": yahoo, "ticker_yahoo_xtb": yahoo, "origem": "xtb", "isin": isin,
+                "moeda_xtb": d.get("moeda")}
+        if isin.startswith("CA") and d["ticker_xtb"].endswith(".US"):
+            item["ticker_yahoo"] = d["ticker_xtb"].rsplit(".", 1)[0] + ".TO"
+            item["alternativa_yahoo"] = yahoo  # se não existir em Toronto, usa-se a de Nova Iorque
+        itens.append(item)
+    resumo["total"] = len(itens)
+    return itens, resumo

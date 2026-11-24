@@ -38,14 +38,15 @@ export function Sobre() {
 
       <Cartao titulo="Dados">
         <p className="text-sm">Última atualização: <b>{dataHora(meta?.gerado_em)}</b> ({meta?.tipo_atualizacao === 'parcial' ? 'parcial' : 'completa'}).</p>
-        {meta && <p className="text-sm">{meta.total_radar} ações no radar de {meta.total_universo} analisadas.</p>}
+        {meta && <p className="text-sm">{meta.total_radar.toLocaleString('pt-PT')} ações no radar de {meta.total_universo.toLocaleString('pt-PT')} no universo
+          {meta.triagem && meta.triagem.por_processar > 0 && <> ({meta.triagem.por_processar.toLocaleString('pt-PT')} ficaram para a próxima noite)</>}.</p>}
         {meta && meta.erros.length > 0 && (
           <details className="mt-2 text-sm"><summary className="cursor-pointer">Ações com erro na última atualização ({meta.erros.length})</summary>
             <ul className="mt-1 list-disc pl-5">{meta.erros.map(e => <li key={e.ticker}>{e.ticker}: {e.erro}</li>)}</ul>
           </details>
         )}
         {meta && meta.sem_dividendos_recentes.length > 0 && (
-          <p className="mt-2 text-xs text-slate-500">Sem dividendos recentes (fora do radar): {meta.sem_dividendos_recentes.join(', ')}</p>
+          <p className="mt-2 text-xs text-slate-500">Da sua lista, sem dividendos recentes (fora do radar): {meta.sem_dividendos_recentes.join(', ')}</p>
         )}
       </Cartao>
     </div>

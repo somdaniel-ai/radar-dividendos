@@ -42,3 +42,8 @@ class Fornecedor(ABC):
 
 class ErroFornecedor(Exception):
     """Erro ao obter dados (a ação é registada e o pipeline continua)."""
+
+
+class Bloqueado(ErroFornecedor):
+    """O fornecedor está a recusar pedidos por excesso (ex.: Yahoo "Too Many Requests").
+    Não diz nada sobre a ação: o pipeline faz uma pausa e, se continuar, para por hoje."""

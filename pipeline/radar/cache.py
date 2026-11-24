@@ -4,6 +4,10 @@
   Se aparecer um dividendo ou desdobramento novo, volta a descarregar tudo
   (porque o preço "ajustado" de todo o histórico muda).
 - Perfil (setor, país, payout…): renovado ao fim de `horas_perfil`.
+- Para caber milhares de instrumentos na cache do GitHub (máx. 10 GB), os preços guardam-se
+  comprimidos (precos.csv.gz), só dos últimos `anos_precos` anos e com 6 algarismos
+  significativos. Os dividendos guardam-se sempre todos (são poucos e servem para a
+  consistência de muitos anos).
 """
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ import datetime as dt
 import json
 import logging
 import re
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -29,13 +34,18 @@ def _nome(ticker: str) -> str:
 
 class Cache:
     def __init__(self, pasta: Path, fornecedor: Fornecedor, horas_perfil: float = 20,
-                 dias_recarga_total: int = 30, dias_sobreposicao: int = 14):
+                 dias_recarga_total: int = 30, dias_sobreposicao: int = 14, anos_precos: int = 12):
         self.pasta = Path(pasta)
         self.pasta.mkdir(parents=True, exist_ok=True)
         self.f = fornecedor
         self.horas_perfil = horas_perfil
         self.dias_recarga_total = dias_recarga_total
         self.dias_sobreposicao = dias_sobreposicao
+        self.anos_precos = anos_precos
+
+    def apagar(self, ticker: str) -> None:
+        """Apaga a cópia local de um instrumento (ex.: deixou de pagar dividendos)."""
+        shutil.rmtree(self.pasta / _nome(ticker), ignore_errors=True)
 
     def _dir(self, ticker):
         d = self.pasta / _nome(ticker)
@@ -51,7 +61,12 @@ class Cache:
 
     def historico(self, ticker: str, hoje: dt.date) -> tuple[pd.DataFrame, pd.Series]:
         d = self._dir(ticker)
-        fp, fd = d / "precos.csv", d / "dividendos.csv"
+        fp, fd = d / "precos.csv.gz", d / "dividendos.csv"
+        if not fp.exists() and (d / "precos.csv").exists():  # formato antigo (sem compressão)
+            fp_antigo = d / "precos.csv"
+            self._compactar(pd.read_csv(fp_antigo, index_col="data", parse_dates=["data"]), hoje).to_csv(
+                fp, index_label="data", compression="gzip")
+            fp_antigo.unlink()
         meta = self._meta(ticker)
         ultima_total = meta.get("ultima_recarga_total")
         precisa_total = (not fp.exists() or not ultima_total
@@ -74,11 +89,33 @@ class Cache:
             precos, div = self.f.obter_historico(ticker, None)
             meta["ultima_recarga_total"] = hoje.isoformat()
 
-        precos.to_csv(fp, index_label="data")
+        precos = self._compactar(precos, hoje)
+        precos.to_csv(fp, index_label="data", compression="gzip")
         div.rename("valor").to_csv(fd, index_label="data")
         meta["ultima_atualizacao"] = hoje.isoformat()
         self._guardar_meta(ticker, meta)
         return precos, div
+
+    def _compactar(self, precos: pd.DataFrame, hoje: dt.date) -> pd.DataFrame:
+        inicio = pd.Timestamp(hoje) - pd.DateOffset(years=self.anos_precos)
+        antigo = precos[precos.index < inicio]
+        if len(antigo):
+            # antes disso: só os dias de cada mês com o máximo e o mínimo (normal e ajustado),
+            # para os máximos/mínimos "de sempre" continuarem exatamente iguais
+            fator = antigo["adjclose"] / antigo["close"]
+            aux = pd.DataFrame({"h": antigo["high"], "l": antigo["low"],
+                                "ha": antigo["high"] * fator, "la": antigo["low"] * fator}, index=antigo.index)
+            g = aux.groupby(aux.index.to_period("M"))
+            dias = set()
+            for col, fn in (("h", "idxmax"), ("l", "idxmin"), ("ha", "idxmax"), ("la", "idxmin")):
+                dias |= set(getattr(g[col], fn)().dropna())
+            out = pd.concat([antigo.loc[sorted(dias)], precos[precos.index >= inicio]])
+        else:
+            out = precos.copy()
+        for c in out.columns:
+            out[c] = out[c].map(lambda v: float(f"{v:.6g}") if pd.notna(v) else v)
+        out.attrs = dict(precos.attrs)
+        return out
 
     @staticmethod
     def _ler(fp: Path, fd: Path):

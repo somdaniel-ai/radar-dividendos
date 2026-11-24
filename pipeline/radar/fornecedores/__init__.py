@@ -1,3 +1,3 @@
-from .base import ErroFornecedor, Fornecedor
+from .base import Bloqueado, ErroFornecedor, Fornecedor
 
-__all__ = ["Fornecedor", "ErroFornecedor"]
+__all__ = ["Fornecedor", "ErroFornecedor", "Bloqueado"]

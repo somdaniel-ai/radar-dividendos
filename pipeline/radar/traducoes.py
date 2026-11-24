@@ -262,6 +262,7 @@ class Tradutor:
 
     nome = "nenhum"
     disponivel = False
+    conta_caracteres = False  # True nos serviços que contam caracteres para a quota (Azure)
 
     def traduzir(self, texto: str) -> str:  # pragma: no cover - implementado nas subclasses
         raise NotImplementedError
@@ -275,6 +276,7 @@ class QuotaEsgotada(Exception):
 LIMITE_MENSAL_PADRAO = 1_500_000
 LIMITE_MENSAL_MAXIMO = 1_900_000  # nunca se aceita um limite mais alto do que este
 LIMITE_EXECUCAO_PADRAO = 300_000
+MINUTOS_EXECUCAO_PADRAO = 15  # tempo máximo a traduzir em cada atualização
 
 
 class CacheTraducoes:
@@ -290,7 +292,8 @@ class CacheTraducoes:
     """
 
     def __init__(self, pasta: Path, tradutor: Tradutor | None, max_caracteres: int = LIMITE_EXECUCAO_PADRAO,
-                 limite_mensal: int = LIMITE_MENSAL_PADRAO, mes: str | None = None, dados_iniciais: dict | None = None):
+                 limite_mensal: int = LIMITE_MENSAL_PADRAO, mes: str | None = None, dados_iniciais: dict | None = None,
+                 max_segundos: float | None = MINUTOS_EXECUCAO_PADRAO * 60, relogio=None):
         self.ficheiro = Path(pasta) / "traducoes.json"
         self.tradutor = tradutor
         self.restante_execucao = max_caracteres
@@ -311,6 +314,10 @@ class CacheTraducoes:
             else:  # formato antigo: {ticker: {...}}
                 self.dados["descricoes"] = {k: v for k, v in bruto.items() if isinstance(v, dict)}
         self.parado = False
+        self.max_segundos = max_segundos
+        self._relogio = relogio or __import__("time").monotonic
+        self._inicio: float | None = None  # o tempo só conta a partir da 1.ª tradução pedida
+        self.tempo_esgotado = False
         self.traduzidas_agora = 0
         self.falhas_agora = 0
         self.caracteres_agora = 0
@@ -320,6 +327,16 @@ class CacheTraducoes:
         return int(self.dados["uso_mensal"].get(self.mes, 0))
 
     def _cabe(self, n: int) -> bool:
+        if self.max_segundos is not None:
+            if self._inicio is None:
+                self._inicio = self._relogio()
+            elif self._relogio() - self._inicio >= self.max_segundos:
+                if not self.tempo_esgotado:
+                    log.info("Tempo de tradução desta execução esgotado: o resto fica para a próxima")
+                self.tempo_esgotado = True
+                return False
+        if not getattr(self.tradutor, "conta_caracteres", False):
+            return True  # modelo local: sem quota de caracteres
         return n <= self.restante_execucao and self.usado_no_mes + n <= self.limite_mensal
 
     def descricao(self, ticker: str, original: str | None, so_cache: bool = False) -> dict:
@@ -365,6 +382,8 @@ class CacheTraducoes:
             "caracteres_usados_no_mes": self.usado_no_mes,
             "limite_mensal": self.limite_mensal,
             "quota_esgotada": self.parado,
+            "tempo_esgotado": self.tempo_esgotado,
+            "segundos_a_traduzir": round(self._relogio() - self._inicio, 1) if self._inicio is not None else 0,
         }
 
     def guardar(self, copia_publica: Path | None = None) -> None:

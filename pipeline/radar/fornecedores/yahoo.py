@@ -11,12 +11,17 @@ import time
 import pandas as pd
 import yfinance as yf
 
-from .base import ErroFornecedor, Fornecedor
+from .base import Bloqueado, ErroFornecedor, Fornecedor
 
 log = logging.getLogger(__name__)
 
 # Moedas "pequenas" em que o Yahoo dá os preços (pence, agorot, cêntimos sul-africanos)
 MOEDAS_CENTIMOS = {"GBp": "GBP", "GBX": "GBP", "ILA": "ILS", "ZAc": "ZAR"}
+
+
+def _e_bloqueio(e: Exception) -> bool:
+    texto = str(e).lower()
+    return type(e).__name__ == "YFRateLimitError" or "too many requests" in texto or "rate limit" in texto
 
 
 def _repetir(func, tentativas: int = 3, espera: float = 2.0):
@@ -28,6 +33,8 @@ def _repetir(func, tentativas: int = 3, espera: float = 2.0):
             ultimo_erro = e
             log.warning("Tentativa %s falhou: %s", i + 1, e)
             time.sleep(espera * (2 ** i))
+    if ultimo_erro is not None and _e_bloqueio(ultimo_erro):
+        raise Bloqueado(str(ultimo_erro))
     raise ErroFornecedor(str(ultimo_erro))
 
 

@@ -1,13 +1,21 @@
 # Descarrega os dados, corre os testes, constrói a app e publica-a no GitHub Pages.
-# Corre sempre que há alterações na app ou no pipeline, e a pedido (botão "Run workflow").
-# (A atualização automática todas as noites é acrescentada na Fase 3.)
+# Corre:
+#   - todas as noites (02:15 UTC = 02:15 em Lisboa no inverno, 03:15 no verão);
+#   - quando há alterações na app ou no pipeline (atualização curta, só para publicar);
+#   - a pedido, no botão "Run workflow" (separador Actions do GitHub).
 name: Publicar app
 
 on:
+  schedule:
+    - cron: "15 2 * * *"
   push:
     branches: [main]
     paths: ["app/**", "pipeline/**", ".github/workflows/publicar.yml"]
   workflow_dispatch:
+    inputs:
+      minutos:
+        description: "Tempo máximo a descarregar dados (minutos)"
+        default: "180"
 
 permissions:
   contents: read
@@ -18,10 +26,14 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # versão do modelo de tradução: mudar o "-v1" obriga a prepará-lo outra vez
+  CHAVE_MODELO: modelo-opus-mt-tc-big-en-pt-ct2-int8-v1
+
 jobs:
   construir:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
@@ -32,13 +44,36 @@ jobs:
           cache-dependency-path: pipeline/requirements.txt
 
       - name: Recuperar a cópia local dos dados (cache)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             pipeline/cache
             data
           key: dados-${{ github.run_id }}
           restore-keys: dados-
+
+      - name: Recuperar o modelo de tradução (cache)
+        id: modelo
+        uses: actions/cache/restore@v4
+        with:
+          path: pipeline/modelos
+          key: ${{ env.CHAVE_MODELO }}
+
+      - name: Preparar o modelo de tradução (só na primeira vez)
+        if: steps.modelo.outputs.cache-hit != 'true'
+        working-directory: pipeline
+        run: |
+          python -m venv /tmp/conversor
+          /tmp/conversor/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          /tmp/conversor/bin/pip install -q -r requirements-modelo.txt
+          /tmp/conversor/bin/python -m ferramentas.preparar_modelo
+
+      - name: Guardar o modelo de tradução (cache)
+        if: steps.modelo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: pipeline/modelos
+          key: ${{ env.CHAVE_MODELO }}
 
       - name: Instalar o pipeline
         run: pip install -r pipeline/requirements.txt
@@ -50,12 +85,28 @@ jobs:
       - name: Descarregar dados e calcular
         working-directory: pipeline
         env:
-          # tradução das descrições (a chave vem dos segredos do GitHub; sem chave, ficam em inglês)
-          RADAR_TRADUTOR: azure
-          AZURE_TRANSLATOR_KEY: ${{ secrets.AZURE_TRANSLATOR_KEY }}
-          AZURE_TRANSLATOR_REGION: ${{ secrets.AZURE_TRANSLATOR_REGION }}
-          RADAR_TRADUCAO_LIMITE_MES: "1500000"
+          # universo: lista manual + lista oficial da XTB (PDF público, renovado 1×/semana)
+          RADAR_LISTA_XTB: sim
+          # à noite e a pedido: até 3 h; depois de uma alteração ao código: só 20 min
+          RADAR_MINUTOS_DADOS: ${{ github.event_name == 'push' && '20' || inputs.minutos || '180' }}
+          # tradução das descrições: modelo aberto OPUS-MT, aqui mesmo (sem contas nem chaves)
+          RADAR_TRADUTOR: opus
+          RADAR_TRADUCAO_MINUTOS: ${{ github.event_name == 'push' && '5' || '25' }}
+          # Alternativa desligada — Microsoft Azure (precisa de conta e dos segredos):
+          # RADAR_TRADUTOR: azure
+          # AZURE_TRANSLATOR_KEY: ${{ secrets.AZURE_TRANSLATOR_KEY }}
+          # AZURE_TRANSLATOR_REGION: ${{ secrets.AZURE_TRANSLATOR_REGION }}
+          # RADAR_TRADUCAO_LIMITE_MES: "1500000"
         run: python -m radar.gerar
+
+      - name: Guardar a cópia local dos dados (cache), mesmo que algo tenha falhado
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            pipeline/cache
+            data
+          key: dados-${{ github.run_id }}
 
       - uses: actions/setup-node@v4
         with:

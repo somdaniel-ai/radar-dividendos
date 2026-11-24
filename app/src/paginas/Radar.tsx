@@ -65,6 +65,14 @@ function Justo({ valor, abaixo, titulo }: { valor: number | null; abaixo: boolea
 
 const col = createColumnHelper<AcaoCalculada>()
 
+// colunas fixas à esquerda na tabela do PC (estrela e nome da ação); a da ação tem uma linha de separação
+const FIXAS: Record<string, string> = {
+  fav: 'left-0 w-10 min-w-10 max-w-10',
+  acao: 'left-10 shadow-[1px_0_0_0_rgb(226_232_240)] dark:shadow-[1px_0_0_0_rgb(30_41_59)]',
+}
+const fixa = (id: string) => FIXAS[id] ?? ''
+const POR_PAGINA = 100
+
 export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
   const { aCarregar, erro, acoes, params, favoritos, alternarFavorito, notas } = useApp()
   const chave = soFavoritos ? 'radar.filtros.favoritos' : 'radar.filtros'
@@ -173,7 +181,11 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
   if (erro) return <Erro texto={erro} />
   if (aCarregar || !params) return <Carregando />
 
-  const linhas = tabela.getRowModel().rows
+  const todasLinhas = tabela.getRowModel().rows
+  // com milhares de ações, desenha-se 100 de cada vez (a página fica rápida também no telemóvel)
+  const [mostrar, setMostrar] = useState(POR_PAGINA)
+  useEffect(() => setMostrar(POR_PAGINA), [f, ordem])
+  const linhas = todasLinhas.slice(0, mostrar)
   const ativos = Object.entries(f).filter(([k, v]) =>
     k !== 'texto' && k !== 'categoria' && JSON.stringify(v) !== JSON.stringify(padraoFiltros[k as keyof Filtros])).length
   const ordemAtual = ordem[0] ?? { id: 'pontos', desc: true }
@@ -184,7 +196,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
         <div>
           <h1 className="text-xl font-bold">{soFavoritos ? 'Favoritos' : 'Radar'}</h1>
           <p className="text-sm text-slate-500">
-            A mostrar {linhas.length} de {soFavoritos ? favoritos.size : acoes.length} ações
+            A mostrar {todasLinhas.length} de {soFavoritos ? favoritos.size : acoes.length} ações
             {f.esconderForaBatentes && params.pontuacao.batentes_ativos && (
               <> · yield líquido entre {pct(params.pontuacao.yield_minimo, 0)} e {pct(params.pontuacao.yield_maximo, 0)}</>
             )}
@@ -355,15 +367,16 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
       </ul>
 
       {/* tabela (PC) */}
-      <div className="hidden overflow-x-auto rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 md:block dark:bg-slate-900 dark:ring-slate-800">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800/60">
+      {/* a tabela tem o seu próprio scroll: os títulos ficam fixos no topo e a 1.ª coluna (ação) à esquerda */}
+      <div data-tabela-radar className="hidden max-h-[calc(100dvh-5.5rem)] overflow-auto rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 md:block dark:bg-slate-900 dark:ring-slate-800">
+        <table className="w-full border-separate border-spacing-0 text-sm">
+          <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
             {tabela.getHeaderGroups().map(g => (
               <tr key={g.id}>
                 {g.headers.map(h => {
                   const s = h.column.getIsSorted()
                   return (
-                    <th key={h.id} className="whitespace-nowrap px-3 py-2"
+                    <th key={h.id} className={`sticky top-0 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800 ${fixa(h.column.id) ? `${fixa(h.column.id)} z-30` : 'z-20'}`}
                       aria-sort={s === 'asc' ? 'ascending' : s === 'desc' ? 'descending' : undefined}>
                       {h.column.getCanSort() ? (
                         <button type="button" onClick={h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 uppercase hover:text-slate-900 dark:hover:text-white">
@@ -380,9 +393,9 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
           <tbody>
             {linhas.map(r => (
               <tr key={r.id} onClick={() => navegar(`/acao/${r.original.ticker}`)}
-                className="cursor-pointer border-t border-slate-100 hover:bg-sky-50/60 dark:border-slate-800 dark:hover:bg-slate-800/50">
+                className="group cursor-pointer">
                 {r.getVisibleCells().map(c => (
-                  <td key={c.id} className="whitespace-nowrap px-3 py-2">{flexRender(c.column.columnDef.cell, c.getContext())}</td>
+                  <td key={c.id} className={`whitespace-nowrap border-b border-slate-100 px-3 py-2 group-hover:bg-sky-50 dark:border-slate-800 dark:group-hover:bg-slate-800 ${fixa(c.column.id) ? `sticky z-10 bg-white dark:bg-slate-900 ${fixa(c.column.id)}` : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>
                 ))}
               </tr>
             ))}
@@ -391,6 +404,17 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
         {linhas.length === 0 && <p className="p-6 text-center text-slate-500">Nenhuma ação corresponde aos filtros.</p>}
       </div>
       {linhas.length === 0 && <p className="p-6 text-center text-slate-500 md:hidden">Nenhuma ação corresponde aos filtros.</p>}
+      {todasLinhas.length > linhas.length && (
+        <div className="flex flex-wrap items-center justify-center gap-3 text-sm">
+          <span className="text-slate-500">A ver {linhas.length} de {todasLinhas.length}</span>
+          <button type="button" onClick={() => setMostrar(m => m + POR_PAGINA)}
+            className="rounded-lg bg-sky-700 px-4 py-2 font-medium text-white hover:bg-sky-800">
+            Mostrar mais {Math.min(POR_PAGINA, todasLinhas.length - linhas.length)}
+          </button>
+          <button type="button" onClick={() => setMostrar(todasLinhas.length)}
+            className="text-sky-700 underline dark:text-sky-400">Mostrar todas</button>
+        </div>
+      )}
       <p className="text-xs text-slate-500">Categorias: {Object.values(NOMES_CATEGORIA).join(' · ')}. Os cálculos usam as suas Definições.</p>
     </div>
   )

@@ -162,6 +162,13 @@ export interface Meta {
   sem_dividendos_recentes: string[]
   erros: { ticker: string; erro: string }[]
   aviso: string
+  universo?: { manual: number; lista_xtb: number; total: number; excluidos: Record<string, number> }
+  triagem?: {
+    agendados: number; processados: number; por_processar: number
+    interrompido: 'tempo' | 'bloqueio' | null
+    sem_dividendos_nesta_execucao: number
+    estados: Record<string, number>
+  }
 }
 
 // Parâmetros (⚙️) — mesma estrutura que pipeline/radar/parametros.py

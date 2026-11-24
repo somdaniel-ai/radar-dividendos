@@ -13,3 +13,5 @@ def _sem_rede_nem_tradutor(monkeypatch):
     monkeypatch.setattr(gerar, "URL_PUBLICA", "")
     monkeypatch.delenv("RADAR_TRADUTOR", raising=False)
     monkeypatch.delenv("AZURE_TRANSLATOR_KEY", raising=False)
+    monkeypatch.delenv("RADAR_LISTA_XTB", raising=False)  # nunca descarrega a lista da XTB
+    monkeypatch.delenv("RADAR_MINUTOS_DADOS", raising=False)

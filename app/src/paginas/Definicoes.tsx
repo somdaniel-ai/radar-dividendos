@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Carregando, Cartao, Erro, NOMES_CATEGORIA } from '../componentes/Comuns'
 import { Suspeitos } from '../componentes/Suspeitos'
+import { UniversoCartao } from '../componentes/UniversoCartao'
 import { useApp, type Tema } from '../lib/contexto'
 import { numero } from '../lib/formato'
 import type { ImpostoPais, Parametros } from '../tipos'
@@ -268,6 +269,8 @@ export function Definicoes() {
       </Cartao>
 
       <Suspeitos />
+
+      <UniversoCartao />
 
       <Cartao titulo="Simulador">
         <Campo caminho="simulador.investimento_padrao" rotulo="Valor a investir por defeito" tipo="num" sufixo="€" ajuda="Usado no Simulador (Fase 5)." />

@@ -16,6 +16,7 @@ def test_termos_fixos_e_em_falta():
 class Falso(Tradutor):
     nome = "falso"
     disponivel = True
+    conta_caracteres = True  # comporta-se como o Azure (conta caracteres)
 
     def __init__(self, falhar=False):
         self.falhar = falhar
@@ -179,3 +180,28 @@ def test_prioridade_pela_pontuacao(tmp_path):
     assert estados == ["traduzida", "indisponivel", "indisponivel"]  # só a 1.ª do ranking
     assert meta["traducoes"]["por_traduzir"] == 2
     assert (tmp_path / "data" / "traducoes.json").exists()
+
+
+def test_modelo_local_sem_quota_mas_com_tempo(tmp_path):
+    class Local(Falso):
+        conta_caracteres = False
+    agora = [0.0]
+    c = CacheTraducoes(tmp_path, Local(), max_caracteres=5, limite_mensal=5, max_segundos=60,
+                       relogio=lambda: agora[0])
+    assert c.descricao("A.US", "texto bem maior do que 5")["estado"] == "traduzida"  # sem limite de caracteres
+    agora[0] = 59
+    assert c.descricao("B.US", "outro")["estado"] == "traduzida"
+    agora[0] = 61  # passou o tempo desta execução: o resto fica para a próxima
+    assert c.descricao("C.US", "mais um")["estado"] == "indisponivel"
+    assert c.resumo()["tempo_esgotado"] and c.resumo()["traduzidas_nesta_execucao"] == 2
+
+
+def test_opus_sem_modelo_nao_traduz(tmp_path, monkeypatch):
+    monkeypatch.setenv("RADAR_TRADUTOR", "opus")
+    monkeypatch.setenv("RADAR_MODELO_OPUS", str(tmp_path / "nao_existe"))
+    assert tradutores.criar_tradutor() is None
+
+
+def test_opus_divide_em_frases():
+    f = tradutores.OpusMT.frases("Coca-Cola Co. makes drinks. It was founded in 1892! Is it big? Yes.")
+    assert f == ["Coca-Cola Co. makes drinks.", "It was founded in 1892!", "Is it big?", "Yes."]

@@ -11,7 +11,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | 0 | Preparação (ferramentas, pastas, repositório) | ✅ concluída |
 | 1 | Motor de dados (pipeline) com a lista inicial | ✅ concluída |
 | 2 | App: Radar, página da ação e Definições | ✅ concluída |
-| 3 | Universo completo da XTB | ⏳ |
+| 3 | Universo completo da XTB | 🔎 em aprovação |
 | 4 | Supabase: login e carteira | ⏳ |
 | 5 | Simulador, Meta de rendimento e Projeção | ⏳ |
 | 6 | Calendário, Alertas (Telegram) e "Atualizar agora" | ⏳ |
@@ -40,10 +40,10 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 
 | Página | O que tem |
 |---|---|
-| **Radar** | Todas as ações com dividendos, ordenadas pela pontuação. No PC aparece uma tabela (clique no título de uma coluna para ordenar); no telemóvel aparecem cartões, com "Ordenar por". Tem pesquisa, separadores por categoria (Empresas, REIT, BDC, Fundos fechados) e filtros: setor, país, moeda, frequência, nível de cor, yield, payout, só abaixo do preço justo, esconder armadilhas e esconder fora dos limites de yield. |
+| **Radar** | Todas as ações com dividendos, ordenadas pela pontuação. No PC aparece uma tabela (clique no título de uma coluna para ordenar); os títulos das colunas e o nome da ação ficam sempre visíveis ao deslizar. No telemóvel aparecem cartões, com "Ordenar por". Mostra 100 de cada vez (botões "Mostrar mais" e "Mostrar todas"). Tem pesquisa, separadores por categoria (Empresas, REIT, BDC, Fundos fechados) e filtros: setor, país, moeda, frequência, nível de cor, yield, payout, só abaixo do preço justo, esconder armadilhas e esconder fora dos limites de yield. |
 | **Página da ação** | Todas as métricas e os dois preços justos, com a frase "hoje rende X%, quando costuma render Y%". Gráfico dos dividendos **por ano** ou **por pagamento** (5 anos / 10 anos / tudo): normais a azul, extraordinários a laranja, aumentos a verde e cortes a vermelho; ao tocar num ponto vê a data, o valor e a variação. Também tem o gráfico do preço, a explicação do nível de cor e da pontuação, as próximas datas, os possíveis extraordinários, a descrição da empresa (tradução automática, com "ver original") e as suas notas. |
 | **Favoritos** | As ações marcadas com ☆. |
-| **Definições** | Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". |
+| **Definições** | Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". Cartão **Universo**: quantos instrumentos o motor acompanha e um espaço para colar ou importar uma lista de símbolos (ex.: da XTB) — mostra o estado de cada um, junta-os aos favoritos e copia os que faltam. |
 | **Sobre** | Aviso legal, explicação dos cálculos, legenda das cores e estado da última atualização. |
 
 > Por agora, **favoritos, notas e definições ficam guardados no próprio aparelho** (PC ou iPhone). Na Fase 4 passam para o Supabase e ficam sincronizados.
@@ -91,7 +91,12 @@ A tarefa **"Publicar app"** do GitHub (`.github/workflows/publicar.yml`) faz tud
 3. constrói a app;
 4. publica-a.
 
-Corre sempre que há alterações. Também pode ser lançada à mão: no GitHub, separador **Actions** → **Publicar app** → **Run workflow**.
+Quando corre:
+- **todas as noites** às 02:15 UTC (02:15 em Lisboa no inverno, 03:15 no verão), com até 3 horas para os dados;
+- quando há alterações ao código (atualização curta, de 20 minutos, só para publicar);
+- à mão: no GitHub, separador **Actions** → **Publicar app** → **Run workflow** (pode indicar quantos minutos).
+
+A cópia local dos dados (cache) é guardada mesmo que algum passo falhe, para a noite seguinte continuar onde parou.
 
 ## Motor de dados (pipeline)
 
@@ -102,7 +107,8 @@ O pipeline vai buscar ao Yahoo Finance os preços, os dividendos e o perfil de c
 | `data/radar.json` | Resumo de todas as ações que pagaram dividendos nos últimos 24 meses, ordenadas pela pontuação |
 | `data/acoes/<TICKER>.json` | Detalhe de cada ação: histórico de dividendos, valores por ano, preços para gráficos |
 | `data/cambios.json` | Câmbios para EUR |
-| `data/meta.json` | Data/hora da atualização, ações sem dividendos recentes e erros |
+| `data/meta.json` | Data/hora da atualização, universo, triagem, traduções e erros |
+| `data/universo.json` | Estado de cada instrumento do universo (no radar, sem dividendos, por verificar…) |
 | `data/definicoes_padrao.json` | Valores por defeito de todos os parâmetros ⚙️ |
 
 ### Primeira instalação (só uma vez)
@@ -121,16 +127,42 @@ Dentro da pasta `pipeline`:
 
 | O que quer fazer | Comando |
 |---|---|
-| Atualizar os dados de todas as ações (15–20 min na 1.ª vez, depois mais rápido) | `.venv\Scripts\python -m radar.gerar` |
+| Atualizar os dados (só a lista manual) | `.venv\Scripts\python -m radar.gerar` |
+| Atualizar com a lista completa da XTB, durante no máximo 30 minutos (PowerShell) | `$env:RADAR_LISTA_XTB="sim"; $env:RADAR_MINUTOS_DADOS="30"; .venv\Scripts\python -m radar.gerar` |
 | Atualizar só algumas ações (as restantes ficam no radar como estavam) | `.venv\Scripts\python -m radar.gerar --tickers KO.US,NOS.PT` |
 | Correr os testes automáticos dos cálculos | `.venv\Scripts\python -m pytest` |
 | Recriar a lista de ações a partir do Excel antigo e do extrato da XTB | `.venv\Scripts\python ferramentas\importar_excel.py` |
 | Comparar os resultados com o Excel (grava em `privado/comparacao_excel.md`) | `.venv\Scripts\python ferramentas\comparar_excel.py` |
 | Gerar a amostra para o teste de paridade da app (depois de mudar fórmulas) | `.venv\Scripts\python ferramentas\gerar_amostra_app.py` |
 
+### Universo: lista da XTB + lista manual
+
+O universo junta duas listas:
+1. **A lista oficial da XTB**: o PDF público "Tabela de especificações – Instrumentos do mercado organizado (OMI)", com ações e ETF reais (não CFD). O `robots.txt` do site não proíbe este ficheiro. Para não sobrecarregar o site, é descarregado **no máximo uma vez por semana**; se falhar, usa-se a última cópia. Código: `pipeline/radar/xtb.py`.
+2. **A lista manual** (`pipeline/universo/universo_xtb.csv`). É esta que manda: os símbolos forçados mantêm-se, e uma linha com `ativo=nao` tira um instrumento do radar mesmo que esteja na lista da XTB.
+
+Regras (código em `pipeline/radar/universo.py`):
+- entram **ações** (incluindo REIT, BDC e fundos fechados) e **ETF de distribuição**, e também os ETF sem indicação;
+- ficam de fora os **ETF de acumulação** e os **ETC/ETN**, que não pagam dividendos;
+- a mesma empresa ou fundo (mesmo ISIN) entra **uma só vez**: na bolsa "de casa" no caso das ações, na linha em euros no caso dos ETF;
+- **ações canadianas em Nova Iorque**: dividendos de Toronto (`.TO`) e cotação da linha da XTB. Se não existir em Toronto, usa-se a de Nova Iorque.
+
+### Triagem e atualização noturna
+
+São milhares de instrumentos, por isso o motor faz uma **triagem** e guarda o resultado de cada um em `pipeline/cache/triagem.json`:
+- **Instrumentos novos:** verificação leve, só com os últimos ~2 anos. Se não pagaram dividendos nos últimos 24 meses, ficam fora do radar, sem guardar dados, e voltam a ser verificados **de 2 em 2 meses**.
+- **Ordem de cada noite:**
+  1. as ações do radar, primeiro as atualizadas há mais tempo;
+  2. as novas, primeiro as da lista manual;
+  3. as que já chegou a altura de rever.
+- **Limite de tempo** (`RADAR_MINUTOS_DADOS`, 180 minutos à noite): o que não couber fica para a noite seguinte. As ações do radar que não foram atualizadas continuam lá, marcadas como desatualizadas se tiverem mais de 2 dias.
+- **Proteção contra bloqueios do Yahoo:** se o Yahoo recusar pedidos ("Too Many Requests"), o motor faz uma pausa de 2 minutos. Ao 3.º bloqueio para por hoje, sem marcar nada como erro.
+- **Espaço:** os preços guardam-se comprimidos, com todos os dias dos últimos 12 anos. Dos anos anteriores ficam só os dias com os máximos e mínimos de cada mês, para os valores "de sempre" continuarem exatos. Os dividendos guardam-se todos.
+- **Estado:** `data/meta.json`, em "universo" e "triagem"; na app, em **Definições → Universo** e em **Sobre**.
+
 ### Lista de ações e símbolos
 
-- `pipeline/universo/universo_xtb.csv`: as ações a analisar. Colunas: `ticker_xtb` (ex.: `KO.US`), `nome`, `tipo` (`ACAO`, `ETF` ou `FUNDO`), `ativo` (`sim`/`nao`) e, opcionalmente, `ticker_yahoo`, para forçar um símbolo do Yahoo.
+- `pipeline/universo/universo_xtb.csv`: a lista manual (ver acima). Colunas: `ticker_xtb` (ex.: `KO.US`), `nome`, `tipo` (`ACAO`, `ETF` ou `FUNDO`), `ativo` (`sim`/`nao`) e, opcionalmente, `ticker_yahoo`, para forçar um símbolo do Yahoo.
 - `pipeline/universo/sufixos.csv`: a conversão dos sufixos da XTB para os do Yahoo (ex.: `.UK` → `.L`, `.PT` → `.LS`).
 - `pipeline/universo/descobertos.csv`: símbolos que o pipeline encontrou sozinho pela pesquisa no Yahoo, guardados para não repetir a pesquisa.
 - `pipeline/universo/extraordinarios.csv`: dividendos extraordinários pagos **no mesmo dia** que o normal. O Yahoo junta os dois num só valor, por isso nenhuma regra automática os consegue separar. Exemplo: a NOS pagou em 2023 0,278 € normal + 0,152 € extra = 0,43 €. Colunas: `ticker_xtb`, `data` (data ex-dividendo), `valor_extraordinario`, `nota`.
@@ -155,18 +187,21 @@ A lista completa fica em `data/extraordinarios_suspeitos.json`.
 
 - **Setores, indústrias, países e tipos de instrumento** são traduzidos com uma tabela fixa, em `pipeline/radar/traducoes.py`. Termos novos que não estejam na tabela ficam em inglês e aparecem em `data/meta.json` ("termos_sem_traducao").
 - A tabela de impostos por país usa os nomes em português (ex.: "Estados Unidos", "Canadá").
-- **Descrições das empresas:** são traduzidas uma vez por empresa e guardadas em cache (`pipeline/cache/traducoes.json`). Só voltam a ser traduzidas se o texto original mudar. Se a tradução falhar, a app mostra o original com a nota "tradução indisponível" e a tradução é tentada de novo na atualização seguinte. 
-  - **Serviço:** Microsoft Azure AI Translator, plano **F0 - Free**, de inglês para português de Portugal. A chave e a região ficam só nos segredos do GitHub (`AZURE_TRANSLATOR_KEY`, `AZURE_TRANSLATOR_REGION`).
-  - **Limites de segurança:** 1,5 milhões de caracteres por mês (o plano grátis dá 2 milhões; o código nunca aceita mais de 1,9 milhões) e 300 mil por execução. Se o Azure disser que a quota acabou, o pipeline deixa de pedir até à execução seguinte.
-  - **Prioridade:** primeiro as ações com melhor pontuação no radar.
-  - **Estado:** `data/meta.json` → "traducoes" mostra o que foi traduzido, quantos caracteres foram usados no mês e quantas descrições faltam.
-  - **Cópia pública:** as traduções e a contagem do mês ficam também em `data/traducoes.json`, publicada com a app. Assim, se a cache do GitHub se perder, recuperam-se sem gastar quota outra vez.
+- **Descrições das empresas:** são traduzidas uma vez por empresa e guardadas em cache (`pipeline/cache/traducoes.json`). Só voltam a ser traduzidas se o texto original mudar. Se a tradução falhar, a app mostra o original com a nota "tradução indisponível" e a tradução é tentada de novo na atualização seguinte.
+  - **Serviço (ligado):** modelo de código aberto **OPUS-MT** (`Helsinki-NLP/opus-mt-tc-big-en-pt`, da Universidade de Helsínquia, licença CC-BY-4.0). Corre no próprio GitHub Actions: **sem contas, chaves, cartões nem limites**. Usa a variante europeia do modelo (marca `>>por<<`; a do Brasil seria `>>pob<<`).
+  - **Português de Portugal:** depois da tradução aplica-se uma tabela de correções (`pipeline/radar/ptpt.py`), por exemplo: registro → registo, usuário → utilizador, treinamento → formação, controle → controlo, "com suas filiais" → "com as suas filiais", "está fornecendo" → "está a fornecer". Para acrescentar uma correção basta juntar uma linha à tabela.
+  - **O modelo:** é convertido uma vez para um formato rápido (CTranslate2, `int8`, ~230 MB) por `pipeline/ferramentas/preparar_modelo.py` e fica guardado na cache do GitHub. Nunca vai para o repositório (`pipeline/modelos/` está no `.gitignore`).
+  - **Tempo:** cerca de 12 segundos por descrição. Por isso traduz no máximo 25 minutos por noite (`RADAR_TRADUCAO_MINUTOS`), primeiro as ações com melhor pontuação. O resto fica para as noites seguintes; depois disso só há descrições novas ou alteradas.
+  - **Alternativa desligada:** o Microsoft Azure Translator continua no código (`RADAR_TRADUTOR=azure`, com os segredos `AZURE_TRANSLATOR_KEY` e `AZURE_TRANSLATOR_REGION`), com limites de segurança de 1,5 milhões de caracteres por mês e 300 mil por execução. Para o ligar, ver os comentários em `publicar.yml`.
+  - **Na app:** o texto traduzido está marcado como português (`lang="pt-PT"`) e o original como inglês (`lang="en"`). Assim, o Safari e o Edge podem oferecer a sua própria tradução do original como alternativa.
+  - **Estado:** `data/meta.json` → "traducoes" mostra quantas descrições foram traduzidas, quanto tempo demorou e quantas faltam.
+  - **Cópia pública:** as traduções ficam também em `data/traducoes.json`, publicada com a app. Assim, se a cache do GitHub se perder, recuperam-se sem traduzir outra vez.
 
 ### Atualização parcial e falhas
 
 - `--tickers` só atualiza as ações pedidas; as outras ficam no radar tal como estavam.
 - Se o Yahoo falhar numa ação, fica a versão anterior, marcada como `desatualizado`. A ação não desaparece do radar.
-- `data/meta.json` indica se a última execução foi completa ou parcial, quais as ações atualizadas e a data da última atualização completa.
+- `data/meta.json` indica se a última execução foi completa ou parcial (por ter acabado o tempo, ou por bloqueio), quais as ações atualizadas, a data da última atualização completa e os erros. Os erros ficam registados até serem resolvidos numa execução seguinte.
 
 ### Categorias
 
