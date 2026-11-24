@@ -42,6 +42,17 @@ export function posicao(preco: number | null, min: number | null | undefined, ma
   return (preco - min) / (max - min)
 }
 
+/** Yield habitual da própria ação nos últimos `anos` (ou os que houver, mínimo 2). */
+export function yieldMedio(yh: Acao['yields_historicos'] | undefined, metodo: string, pagamentosAno: number, anos: number) {
+  const m = metodo !== 'ultimo' || pagamentosAno <= 0 ? 'ttm' : 'ultimo'
+  const pedidos = Math.max(2, Math.min(10, Math.trunc(anos)))
+  const n = Math.min(pedidos, Math.trunc(yh?.anos_disponiveis ?? 0))
+  if (n < 2) return { y: null as number | null, anos: 0 }
+  const y = yh?.[m]?.[String(n)]
+  if (!y || y <= 0) return { y: null, anos: 0 }
+  return { y, anos: n }
+}
+
 // ---------- 6.4 Pagamentos ----------
 
 export function estaAtrasado(
@@ -186,6 +197,11 @@ export function recalcular(a: Acao, p: Parametros, hoje: string): AcaoCalculada 
   const y = yields(anualEur ?? 0, a.preco_eur, imposto.taxa)
   const justo = anual && p.preco.yield_alvo > 0 ? anual / p.preco.yield_alvo : null
   const justoEur = justo && fx ? justo * fx : null
+  const ym = yieldMedio(a.yields_historicos, p.rendimento.metodo_dividendo_anual, a.pagamentos_ano, p.preco.anos_media_yield ?? 5)
+  const justoH = ym.y && anual ? anual / ym.y : null
+  const justoHEur = justoH && fx ? justoH * fx : null
+  const usarHist = (p.preco.preco_justo_pontuacao ?? 'historico') === 'historico' && justoHEur != null
+  const justoPont = usarHist ? justoHEur : justoEur
   const pos = {} as Acao['posicao']
   for (const k of ['52s', '5a', 'sempre'] as const) {
     const e = a.extremos[k]
@@ -209,13 +225,19 @@ export function recalcular(a: Acao, p: Parametros, hoje: string): AcaoCalculada 
     preco_justo: justo,
     preco_justo_eur: justoEur,
     abaixo_preco_justo: Boolean(a.preco != null && justo && a.preco < justo),
+    yield_medio_historico: ym.y,
+    anos_media_usados: ym.anos,
+    preco_justo_historico: justoH,
+    preco_justo_historico_eur: justoHEur,
+    abaixo_preco_justo_historico: Boolean(a.preco != null && justoH && a.preco < justoH),
+    preco_justo_pontuacao: usarHist ? 'historico' : 'alvo',
     posicao: pos,
     pagamento: { ...a.pagamento, atrasado },
     consistencia: met,
     nivel: niv,
     armadilhas: sinais,
     fora_batentes: foraBatentes(y.liquido, p.pontuacao),
-    pontuacao: pontuacao(y.liquido, niv.nivel, met, a.preco_eur, justoEur, pos['52s'], sinais, p.pontuacao),
+    pontuacao: pontuacao(y.liquido, niv.nivel, met, a.preco_eur, justoPont, pos['52s'], sinais, p.pontuacao),
     perto_minimo_52s: pos['52s'] != null && pos['52s'] <= p.preco.limite_perto_minimo,
     perto_maximo_52s: pos['52s'] != null && pos['52s'] >= p.preco.limite_perto_maximo,
   }

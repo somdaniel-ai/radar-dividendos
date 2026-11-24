@@ -24,6 +24,8 @@ from .cache import Cache
 from .fornecedores import ErroFornecedor, Fornecedor
 from .fornecedores.yahoo import Yahoo
 from .parametros import parametros
+from .traducoes import CacheTraducoes, Termos, Tradutor
+from .tradutores import criar_tradutor
 
 log = logging.getLogger("radar")
 RAIZ = Path(__file__).resolve().parents[2]
@@ -81,6 +83,20 @@ def _descobrir(f: Fornecedor, cache: Cache, item: dict, hoje: dt.date, pasta_uni
     raise ErroFornecedor("Símbolo não encontrado no Yahoo")
 
 
+def _em_portugues(perfil: dict, termos: Termos) -> dict:
+    """Setor, indústria, país e tipo em português (tabela fixa); guarda os originais."""
+    return {
+        **perfil,
+        "setor": termos.setor(perfil.get("setor")),
+        "industria": termos.industria(perfil.get("industria")),
+        "pais": termos.pais(perfil.get("pais")),
+        "tipo_instrumento": termos.tipo(perfil.get("tipo_yahoo")),
+        "setor_original": perfil.get("setor"),
+        "industria_original": perfil.get("industria"),
+        "pais_original": perfil.get("pais"),
+    }
+
+
 def _cotacao_xtb(f: Fornecedor, cache: Cache, item: dict, agora: dt.datetime) -> dict | None:
     """Cotação da linha que existe na XTB, quando os dados de rendimento vêm de outra bolsa
     (ex.: Telus: dados de T.TO em CAD, mas na XTB é TU.US em USD)."""
@@ -98,7 +114,8 @@ def _cotacao_xtb(f: Fornecedor, cache: Cache, item: dict, agora: dt.datetime) ->
 
 def executar(saida: Path, tickers: list[str] | None = None, limite: int | None = None,
              fornecedor: Fornecedor | None = None, pasta_cache: Path | None = None,
-             pasta_universo: Path | None = None, agora: dt.datetime | None = None) -> dict:
+             pasta_universo: Path | None = None, agora: dt.datetime | None = None,
+             tradutor: Tradutor | None = None) -> dict:
     """Atualiza as ações pedidas e grava os JSON.
 
     Atualização parcial (`tickers` ou `limite`): as ações que não foram pedidas mantêm-se
@@ -113,6 +130,9 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     pasta_universo = pasta_universo or uni.PASTA
     cache = Cache(pasta_cache or (RAIZ / "pipeline" / "cache"), f)
     extras = uni.ler_extraordinarios(pasta_universo)
+    rejeitados = uni.ler_rejeitados(pasta_universo)
+    termos = Termos()
+    trad = CacheTraducoes(cache.pasta, tradutor if tradutor is not None else criar_tradutor())
 
     todos = uni.ler_universo(pasta_universo)
     no_universo = {i["ticker_xtb"] for i in todos}
@@ -141,10 +161,15 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
                     item["ticker_yahoo"], precos, div = _descobrir(f, cache, item, hoje, pasta_universo)
             else:
                 item["ticker_yahoo"], precos, div = _descobrir(f, cache, item, hoje, pasta_universo)
-            perfil = cache.perfil(item["ticker_yahoo"], agora)
+            perfil = _em_portugues(cache.perfil(item["ticker_yahoo"], agora), termos)
             fx = f.obter_cambio(perfil.get("moeda"))
             r = analisar(item, precos, div, perfil, fx, hoje, p, extras.get(t),
-                         _cotacao_xtb(f, cache, item, agora))
+                         _cotacao_xtb(f, cache, item, agora), rejeitados.get(t))
+            desc = trad.descricao(t, perfil.get("descricao"))
+            r["detalhe"]["descricao"] = desc["texto"]
+            r["detalhe"]["descricao_original"] = desc["original"] if desc["estado"] == "traduzida" else None
+            r["detalhe"]["descricao_estado"] = desc["estado"]
+            r["detalhe"]["descricao_servico"] = desc["servico"]
         except Exception as e:  # noqa: BLE001 — uma ação nunca pode parar o pipeline
             log.error("%s: %s", t, e)
             erros.append({"ticker": t, "ticker_yahoo": item.get("ticker_yahoo"), "erro": str(e)})
@@ -199,6 +224,16 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
         "duracao_segundos": round(time.time() - inicio, 1),
         "aviso": "Ferramenta de apoio pessoal. Não constitui aconselhamento financeiro nem fiscal.",
     }
+    # lista de possíveis extraordinários (a confirmar ou rejeitar nas Definições da app)
+    suspeitos = [{"ticker": r["ticker"], "nome": r["nome"], "moeda": r["moeda"], **s}
+                 for r in resumos for s in r.get("extraordinarios_suspeitos", [])]
+    meta["total_extraordinarios_suspeitos"] = len(suspeitos)
+    trad.guardar()
+    meta["traducoes"] = {"servico": trad.tradutor.nome if trad.tradutor else "nenhum",
+                         "traduzidas_nesta_execucao": trad.traduzidas_agora, "falhas": trad.falhas_agora,
+                         "em_cache": len(trad.dados)}
+    meta["termos_sem_traducao"] = termos.relatorio()
+    _escrever(saida / "extraordinarios_suspeitos.json", {"gerado_em": meta["gerado_em"], "suspeitos": suspeitos})
     _escrever(saida / "radar.json", {"gerado_em": meta["gerado_em"], "acoes": resumos})
     _escrever(saida / "cambios.json", {"gerado_em": meta["gerado_em"], "base": "EUR",
                                        "eur_por_unidade": cambios})

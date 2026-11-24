@@ -38,7 +38,8 @@ def _extras_manuais(div: pd.Series, extras: dict[str, float] | None) -> pd.Serie
 
 def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil: dict,
              cambio_eur: float | None, hoje: dt.date, p: dict,
-             extras_manuais: dict[str, float] | None = None, cotacao_xtb: dict | None = None) -> dict:
+             extras_manuais: dict[str, float] | None = None, cotacao_xtb: dict | None = None,
+             rejeitados: list[str] | None = None) -> dict:
     """Calcula todas as métricas de um instrumento.
 
     `base` tem a identificação vinda do universo (ticker_xtb, ticker_yahoo, nome, tipo).
@@ -70,7 +71,8 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
     parte_extra = parte_manual.add(base_div[extra], fill_value=0.0).reindex(div.index, fill_value=0.0)
     tem_extra = parte_extra > 1e-9
 
-    cat = categoria.detetar_categoria(base.get("tipo"), perfil.get("tipo_yahoo"), perfil.get("industria"),
+    cat = categoria.detetar_categoria(base.get("tipo"), perfil.get("tipo_yahoo"),
+                                      perfil.get("industria_original", perfil.get("industria")),
                                       perfil.get("descricao"), perfil.get("nome") or base.get("nome"))
     avisos = []
     if cat == "CEF":
@@ -101,6 +103,23 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
 
     justo = precos.preco_justo(da["anual"], pp["yield_alvo"])
     justo_eur = justo * fx if (justo and fx) else None
+    # preço justo histórico: dividendo anual ÷ yield médio da própria ação nos últimos N anos
+    yh = precos.yields_historicos(df_precos, normais, pf, hoje)
+    ymed, anos_usados = precos.yield_medio(yh, p["rendimento"]["metodo_dividendo_anual"],
+                                           freq["pagamentos_ano"], pp["anos_media_yield"])
+    justo_h = da["anual"] / ymed if (ymed and da["anual"]) else None
+    justo_h_eur = justo_h * fx if (justo_h and fx) else None
+    usar_hist = pp.get("preco_justo_pontuacao", "historico") == "historico" and justo_h_eur is not None
+    justo_pont_eur = justo_h_eur if usar_hist else justo_eur
+
+    # possíveis extraordinários (avisos a confirmar), sem os já declarados ou rejeitados
+    ja_decididos = list((extras_manuais or {}).keys()) + list(rejeitados or [])
+    suspeitos = [s for s in frequencia.suspeitos_extraordinarios(normais, hoje.year, pf, freq["pagamentos_ano"])
+                 if not any(abs((pd.Timestamp(s["data"]) - pd.Timestamp(x)).days) <= 5 for x in ja_decididos)]
+    if suspeitos:
+        avisos.append({"codigo": "possivel_extra", "texto": (
+            f"{len(suspeitos)} possível(eis) dividendo(s) extraordinário(s), a confirmar "
+            f"(último: {suspeitos[-1]['data']}). Confirme ou rejeite nas Definições.")})
     ext = precos.extremos(df_precos, hoje)
     pos = precos.posicoes(preco, ext, pp["usar_precos_ajustados"])
     var12 = precos.variacao_12m(df_precos, hoje)
@@ -118,7 +137,7 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
 
     arm = pontuacao.armadilhas(y["liquido"], perfil.get("payout"), var12, atrasado, pt, cat)
     bat = pontuacao.fora_batentes(y["liquido"], pt)
-    pont = pontuacao.pontuacao(y["liquido"], niv["nivel"], met, preco_eur, justo_eur, pos.get("52s"), arm, pt)
+    pont = pontuacao.pontuacao(y["liquido"], niv["nivel"], met, preco_eur, justo_pont_eur, pos.get("52s"), arm, pt)
 
     limite = pd.Timestamp(hoje) - pd.DateOffset(months=p["universo"]["meses_sem_dividendo_para_excluir"])
     pagou_recente = bool(len(div) and div.index[-1] > limite)
@@ -132,9 +151,13 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
         "categoria": cat,
         "categoria_nome": categoria.CATEGORIAS[cat],
         "avisos": avisos,
+        "tipo_instrumento": perfil.get("tipo_instrumento"),
         "setor": perfil.get("setor"),
         "industria": perfil.get("industria"),
         "pais": perfil.get("pais"),
+        "setor_original": perfil.get("setor_original"),
+        "industria_original": perfil.get("industria_original"),
+        "pais_original": perfil.get("pais_original"),
         "bolsa": perfil.get("bolsa"),
         "moeda": perfil.get("moeda"),
         "capitalizacao": perfil.get("capitalizacao"),
@@ -167,6 +190,15 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
         "preco_justo": _r(justo),
         "preco_justo_eur": _r(justo_eur),
         "abaixo_preco_justo": bool(preco is not None and justo and preco < justo),
+        "yields_historicos": yh,
+        "yield_medio_historico": _r(ymed),
+        "anos_media_usados": anos_usados,
+        "preco_justo_historico": _r(justo_h),
+        "preco_justo_historico_eur": _r(justo_h_eur),
+        "abaixo_preco_justo_historico": bool(preco is not None and justo_h and preco < justo_h),
+        "preco_justo_pontuacao": "historico" if usar_hist else "alvo",
+        "extraordinarios_suspeitos": [{**s, "valor": _r(s["valor"]), "extra_estimado": _r(s["extra_estimado"])}
+                                      for s in suspeitos],
         "extremos": {k: ({kk: _r(vv) for kk, vv in v.items()} if v else None) for k, v in ext.items()},
         "posicao": {k: _r(v, 4) for k, v in pos.items()},
         "payout": _r(perfil.get("payout"), 4),

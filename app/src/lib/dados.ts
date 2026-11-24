@@ -1,6 +1,6 @@
 // Leitura dos ficheiros JSON gerados pelo pipeline (publicados junto com a app).
 import { useEffect, useState } from 'react'
-import type { Acao, AcaoDetalhe, Meta, Parametros } from '../tipos'
+import type { Acao, AcaoDetalhe, Meta, Parametros, SuspeitoLista } from '../tipos'
 
 const BASE = `${import.meta.env.BASE_URL}data/`
 
@@ -13,7 +13,8 @@ async function obter<T>(ficheiro: string): Promise<T> {
 export const lerRadar = () => obter<{ gerado_em: string; acoes: Acao[] }>('radar.json')
 export const lerMeta = () => obter<Meta>('meta.json')
 export const lerPadrao = () => obter<Parametros>('definicoes_padrao.json')
-export const lerAcao = (ticker: string) => obter<AcaoDetalhe>(`acoes/${encodeURIComponent(ticker)}.json`)
+export const lerSuspeitos = () => obter<{ gerado_em: string; suspeitos: SuspeitoLista[] }>('extraordinarios_suspeitos.json')
+export const lerAcao =(ticker: string) => obter<AcaoDetalhe>(`acoes/${encodeURIComponent(ticker)}.json`)
 
 export interface Estado<T> {
   dados: T | null

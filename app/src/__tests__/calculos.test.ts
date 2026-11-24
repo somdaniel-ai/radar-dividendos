@@ -39,6 +39,11 @@ describe('paridade com o pipeline (Python)', () => {
           perto(r.yield.liquido, e.yield.liquido)
           perto(r.preco_justo_eur, e.preco_justo_eur)
           expect(r.abaixo_preco_justo).toBe(e.abaixo_preco_justo)
+          perto(r.yield_medio_historico, e.yield_medio_historico)
+          expect(r.anos_media_usados).toBe(e.anos_media_usados)
+          perto(r.preco_justo_historico_eur, e.preco_justo_historico_eur, 1e-3, 1e-4)
+          expect(r.abaixo_preco_justo_historico).toBe(e.abaixo_preco_justo_historico)
+          expect(r.preco_justo_pontuacao).toBe(e.preco_justo_pontuacao)
           for (const k of ['52s', '5a', 'sempre'] as const) perto(r.posicao[k], e.posicao[k], 1e-3, 1e-3)
           expect(r.pagamento.atrasado).toBe(e.pagamento.atrasado)
           for (const k of ['anos_a_pagar', 'anos_sem_corte', 'anos_seguidos_aumento', 'aumentos_ultimos_10',

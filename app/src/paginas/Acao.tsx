@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
+import { GraficoDividendos } from '../componentes/GraficoDividendos'
 import { Carregando, Cartao, Erro, Estrela, EtiquetaCategoria, ListaSinais } from '../componentes/Comuns'
 import { EtiquetaNivel, Legenda } from '../componentes/Nivel'
 import { recalcular } from '../lib/calculos'
@@ -61,24 +62,10 @@ export function Acao() {
 export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
   const { params, hoje, favoritos, alternarFavorito, notas, gravarNota } = useApp()
   const [vistaPreco, setVistaPreco] = useState<'5a' | 'sempre'>('5a')
-  const [todosAnos, setTodosAnos] = useState(false)
   const [verLegenda, setVerLegenda] = useState(false)
+  const [verOriginal, setVerOriginal] = useState(false)
 
   const a = useMemo(() => (dados && params ? { ...dados, ...recalcular(dados, params, hoje) } : null), [dados, params, hoje])
-
-  const porAno = useMemo(() => {
-    if (!dados) return []
-    const m = new Map<number, { ano: number; normal: number; extra: number }>()
-    for (const h of dados.historico_dividendos) {
-      const ano = Number(h.data.slice(0, 4))
-      const e = m.get(ano) ?? { ano, normal: 0, extra: 0 }
-      e.extra += h.parte_extraordinaria
-      e.normal += h.valor - h.parte_extraordinaria
-      m.set(ano, e)
-    }
-    const lista = [...m.values()].sort((x, y) => x.ano - y.ano)
-    return todosAnos ? lista : lista.slice(-15)
-  }, [dados, todosAnos])
 
   const serie = useMemo(() => {
     if (!dados) return []
@@ -122,15 +109,39 @@ export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
             </div>
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <Grande rotulo="Preço" valor={euros(a.preco_eur)}
             sub={<>{moeda(a.preco, m)} · <span className={(a.variacao_dia ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}>{pctSinal(a.variacao_dia, 2)} hoje</span></>} />
           <Grande rotulo="Yield líquido" valor={pct(a.yield.liquido, 2)} sub={`bruto ${pct(a.yield.bruto, 2)} · imposto ${pct(a.imposto.taxa, 0)}`} />
-          <Grande rotulo="Preço justo" valor={<span className={a.abaixo_preco_justo ? 'text-emerald-700 dark:text-emerald-400' : ''}>{euros(a.preco_justo_eur)}</span>}
-            sub={a.abaixo_preco_justo ? '✓ preço atual abaixo' : `yield alvo ${pct(params.preco.yield_alvo, 1)}`} />
+          <Grande rotulo={`Preço justo (${pct(params.preco.yield_alvo, 0)})`}
+            valor={<span className={a.abaixo_preco_justo ? 'text-emerald-700 dark:text-emerald-400' : ''}>{euros(a.preco_justo_eur)}{a.abaixo_preco_justo ? ' ✓' : ''}</span>}
+            sub={a.abaixo_preco_justo ? 'preço atual abaixo' : `com yield alvo de ${pct(params.preco.yield_alvo, 1)}`} />
+          <Grande rotulo="Preço justo histórico"
+            valor={<span className={a.abaixo_preco_justo_historico ? 'text-emerald-700 dark:text-emerald-400' : ''}>{euros(a.preco_justo_historico_eur)}{a.abaixo_preco_justo_historico ? ' ✓' : ''}</span>}
+            sub={a.yield_medio_historico == null ? 'histórico insuficiente (< 2 anos)' : a.abaixo_preco_justo_historico ? 'preço atual abaixo' : `yield habitual ${pct(a.yield_medio_historico, 1)}`} />
           <Grande rotulo="Dividendo anual" valor={euros(a.dividendo.anual_eur, 3)}
             sub={`${moeda(a.dividendo.anual, m, 3)} · ${a.frequencia}`} />
         </div>
+        {a.yield_medio_historico != null && a.yield.bruto != null && (
+          <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
+            Hoje rende <b>{pct(a.yield.bruto, 1)}</b>, quando costuma render <b>{pct(a.yield_medio_historico, 1)}</b>
+            {' '}(yield bruto habitual nos últimos {a.anos_media_usados} anos
+            {a.anos_media_usados < params.preco.anos_media_yield ? `; só há ${a.anos_media_usados} anos de histórico` : ''}).
+            {' '}{a.yield.bruto > a.yield_medio_historico * 1.02
+              ? 'Está a render mais do que é habitual: o preço está abaixo do habitual face ao dividendo.'
+              : a.yield.bruto < a.yield_medio_historico * 0.98
+                ? 'Está a render menos do que é habitual: o preço está acima do habitual face ao dividendo.'
+                : 'Está a render o que é habitual.'}
+            <span className="mt-1 block text-xs text-slate-500">
+              Preço justo histórico = dividendo anual ÷ yield habitual. "Habitual" = mediana dos yields mensais, sem extraordinários.
+              {' '}Conta para a pontuação: preço justo {a.preco_justo_pontuacao === 'historico' ? 'histórico' : `com yield alvo (${pct(params.preco.yield_alvo, 0)})`}
+              {params.preco.preco_justo_pontuacao === 'historico' && a.preco_justo_pontuacao === 'alvo' ? ' (o histórico não está disponível)' : ''}.
+            </span>
+          </p>
+        )}
+        {a.yield_medio_historico == null && (
+          <p className="mt-3 text-xs text-slate-500">Preço justo histórico indisponível: são precisos pelo menos 2 anos de histórico de yields.</p>
+        )}
         {xtbDiferente && (
           <p className="mt-3 rounded-xl bg-sky-50 p-3 text-xs text-sky-950 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-100 dark:ring-sky-900">
             Rendimento calculado com os dados de <b>{a.ticker_yahoo}</b> ({m}), onde o dividendo é declarado. Na XTB esta ação é <b>{a.ticker}</b>, cotada a {moeda(a.cotacao_xtb.preco, a.cotacao_xtb.moeda)} ({euros(a.cotacao_xtb.preco_eur)}) — é esta cotação que conta para a carteira.
@@ -187,26 +198,19 @@ export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
         </Cartao>
       </div>
 
-      {/* dividendos por ano */}
-      <Cartao titulo={`Dividendos por ano (${m ?? ''})`} acao={
-        <button type="button" className="text-sm text-sky-700 underline dark:text-sky-400" onClick={() => setTodosAnos(v => !v)}>
-          {todosAnos ? 'Últimos 15 anos' : 'Todos os anos'}
-        </button>}>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={porAno} margin={{ left: -10, right: 4, top: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />
-              <XAxis dataKey="ano" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => numero(v, 2)} />
-              <Tooltip formatter={v => moeda(Number(v), m, 3)} labelFormatter={l => `Ano ${l}`} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="normal" name="Normal" stackId="d" fill="#0284c7" />
-              <Bar dataKey="extra" name="Extraordinário" stackId="d" fill="#f59e0b" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <p className="mt-1 text-xs text-slate-500">O ano corrente ainda não está completo e não conta para a consistência.</p>
-      </Cartao>
+      {/* dividendos: por ano / por pagamento */}
+      <GraficoDividendos dados={dados} tolerancia={params.pagamentos.tolerancia_igual} />
+
+      {a.extraordinarios_suspeitos.length > 0 && (
+        <Cartao titulo="Possíveis extraordinários (a confirmar)">
+          <ul className="space-y-1 text-sm">
+            {a.extraordinarios_suspeitos.map(s => (
+              <li key={s.data}>❓ <b>{data(s.data)}</b>: {moeda(s.valor, m, 4)} (extra estimado ≈ {moeda(s.extra_estimado, m, 4)}) — {s.motivo}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-slate-500">Enquanto não forem confirmados, estes pagamentos contam como normais. <Link to="/definicoes#suspeitos" className="text-sky-700 underline dark:text-sky-400">Confirmar ou rejeitar nas Definições</Link>.</p>
+        </Cartao>
+      )}
 
       <div className="grid gap-3 lg:grid-cols-2">
         {/* pagamentos */}
@@ -293,8 +297,24 @@ export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
 
       {a.descricao && (
         <Cartao titulo="Sobre a empresa">
-          <p className="text-sm text-slate-600 dark:text-slate-300" lang="en">{a.descricao}</p>
-          <p className="mt-1 text-xs text-slate-500">Descrição do Yahoo Finance (em inglês).</p>
+          {a.descricao_estado === 'traduzida' ? (
+            <>
+              <p className="text-sm text-slate-600 dark:text-slate-300" lang={verOriginal ? 'en' : 'pt-PT'}>
+                {verOriginal ? a.descricao_original : a.descricao}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {verOriginal ? 'Texto original (inglês).' : 'Tradução automática.'}{' '}
+                <button type="button" className="text-sky-700 underline dark:text-sky-400" onClick={() => setVerOriginal(v => !v)}>
+                  {verOriginal ? 'ver tradução' : 'ver original'}
+                </button>
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-600 dark:text-slate-300" lang="en">{a.descricao}</p>
+              <p className="mt-1 text-xs text-slate-500">Original em inglês — tradução indisponível (será tentada na próxima atualização).</p>
+            </>
+          )}
         </Cartao>
       )}
       <p className="text-xs text-slate-500">Dados desta ação atualizados em {dataHora(a.atualizado_em)}.</p>

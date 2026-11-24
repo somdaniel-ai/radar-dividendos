@@ -56,3 +56,15 @@ describe('páginas', () => {
     })
   }
 })
+
+describe('decisões sobre extraordinários', () => {
+  it('gera as linhas para os ficheiros do pipeline', async () => {
+    const { textoDecisoes } = await import('../componentes/Suspeitos')
+    const t = textoDecisoes({
+      'NOS.PT|2023-04-19': { decisao: 'confirmar', valor_extra: 0.152, em: '2026-11-24' },
+      'ORA.FR|2025-06-03': { decisao: 'rejeitar', valor_extra: 0, em: '2026-11-24' },
+    })
+    expect(t).toContain('NOS.PT,2023-04-19,0.152,"Confirmado na app em 2026-11-24"')
+    expect(t).toContain('ORA.FR,2025-06-03,"Rejeitado na app em 2026-11-24"')
+  })
+})

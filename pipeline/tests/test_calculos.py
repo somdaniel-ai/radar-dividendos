@@ -71,10 +71,10 @@ def test_irregular_usa_ttm():
 def test_imposto_avancado():
     imp = parametros({"impostos": {"modo": "avancado"}})["impostos"]
     # EUA com W-8BEN: 15% retido + 13% em Portugal = 28%
-    assert rendimento.taxa_imposto("United States", imp)["taxa"] == pytest.approx(0.28)
+    assert rendimento.taxa_imposto("Estados Unidos", imp)["taxa"] == pytest.approx(0.28)
     # EUA sem W-8BEN: 30% retido, Portugal só desconta 15% → 30% + 13% = 43%
     imp["w8ben_ativo"] = False
-    assert rendimento.taxa_imposto("United States", imp)["taxa"] == pytest.approx(0.43)
+    assert rendimento.taxa_imposto("Estados Unidos", imp)["taxa"] == pytest.approx(0.43)
     assert rendimento.taxa_imposto("Portugal", imp)["taxa"] == pytest.approx(0.28)
     desconhecido = rendimento.taxa_imposto("Narnia", imp)
     assert desconhecido["taxa"] == pytest.approx(0.28) and not desconhecido["conhecida"]

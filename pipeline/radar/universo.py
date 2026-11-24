@@ -57,6 +57,16 @@ def ler_extraordinarios(pasta: Path = PASTA) -> dict[str, dict[str, float]]:
     return out
 
 
+def ler_rejeitados(pasta: Path = PASTA) -> dict[str, list[str]]:
+    """Possíveis extraordinários que o utilizador rejeitou (`extraordinarios_rejeitados.csv`):
+    {ticker_xtb: [data, …]} — deixam de ser assinalados."""
+    out: dict[str, list[str]] = {}
+    for r in ler_csv(pasta / "extraordinarios_rejeitados.csv"):
+        if r.get("ticker_xtb") and r.get("data"):
+            out.setdefault(r["ticker_xtb"].upper(), []).append(r["data"])
+    return out
+
+
 def converter(ticker_xtb: str, sufixos: dict[str, str], descobertos: dict[str, str] | None = None) -> str | None:
     """CABO.US → CABO; ABDN.UK → ABDN.L; NOS.PT → NOS.LS. None se o sufixo for desconhecido."""
     if descobertos and ticker_xtb in descobertos:

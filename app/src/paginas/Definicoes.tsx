@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Carregando, Cartao, Erro, NOMES_CATEGORIA } from '../componentes/Comuns'
+import { Suspeitos } from '../componentes/Suspeitos'
 import { useApp, type Tema } from '../lib/contexto'
 import { numero } from '../lib/formato'
 import type { ImpostoPais, Parametros } from '../tipos'
@@ -87,7 +89,7 @@ function TabelaPaises() {
     <div className="mt-2">
       <p className="mb-2 text-xs text-slate-500">
         Retenção = taxa retida no país de origem. Com W-8BEN = taxa retida se tiver o formulário W-8BEN (só EUA).
-        Crédito máx. = máximo que Portugal desconta (taxa da convenção). O nome do país tem de ser igual ao do Yahoo, em inglês (ex.: "United States", "Canada", "France").
+        Crédito máx. = máximo que Portugal desconta (taxa da convenção). Escreva o nome do país tal como aparece na app (ex.: "Estados Unidos", "Canadá", "França", "Países Baixos").
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -115,7 +117,7 @@ function TabelaPaises() {
         if (n && !paises[n]) alterar('impostos.por_pais', { ...paises, [n]: { retencao: 0.15, credito_max: 0.15 } })
         setNovo('')
       }}>
-        <input value={novo} onChange={e => setNovo(e.target.value)} placeholder="Acrescentar país (ex.: France)"
+        <input value={novo} onChange={e => setNovo(e.target.value)} placeholder="Acrescentar país (ex.: França)"
           className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950" />
         <button type="submit" className="rounded-lg bg-slate-900 px-3 py-1 text-sm text-white dark:bg-white dark:text-slate-900">Acrescentar</button>
       </form>
@@ -154,6 +156,10 @@ function SoLeitura({ rotulo, valor }: { rotulo: string; valor: string }) {
 
 export function Definicoes() {
   const { params, padrao, aCarregar, erro, repor, personalizado, tema, setTema } = useApp()
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!aCarregar && hash) setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth' }), 50)
+  }, [hash, aCarregar])
   if (erro) return <Erro texto={erro} />
   if (aCarregar || !params || !padrao) return <Carregando />
   const pf: Parametros['frequencia'] = padrao.frequencia
@@ -208,6 +214,11 @@ export function Definicoes() {
         <Campo caminho="preco.limite_perto_maximo" rotulo="Destacar perto do máximo (posição ≥)" tipo="pct" />
         <Campo caminho="preco.usar_precos_ajustados" rotulo="Usar máximos/mínimos ajustados" tipo="bool"
           ajuda="Ajustados = corrigidos pelos dividendos pagos (fator = preço ajustado ÷ preço)." />
+        <Campo caminho="preco.anos_media_yield" rotulo="Anos para o yield habitual (preço justo histórico)" tipo="num" sufixo="anos"
+          ajuda="Entre 2 e 10. Se a ação tiver menos histórico, usa-se o que houver (mínimo 2 anos)." />
+        <Campo caminho="preco.preco_justo_pontuacao" rotulo="Preço justo usado no «preço atrativo» da pontuação" tipo="select"
+          opcoes={[['historico', 'Histórico (yield habitual da ação)'], ['alvo', 'Com yield alvo']]}
+          ajuda="Se o histórico não estiver disponível, usa-se o do yield alvo." />
       </Cartao>
 
       <Cartao titulo="Pagamentos atrasados">
@@ -256,6 +267,8 @@ export function Definicoes() {
         <Campo caminho="pontuacao.armadilha_atraso" rotulo="⏰ Dividendo atrasado" tipo="bool" />
       </Cartao>
 
+      <Suspeitos />
+
       <Cartao titulo="Simulador">
         <Campo caminho="simulador.investimento_padrao" rotulo="Valor a investir por defeito" tipo="num" sufixo="€" ajuda="Usado no Simulador (Fase 5)." />
       </Cartao>
@@ -273,6 +286,9 @@ export function Definicoes() {
         <SoLeitura rotulo="Pagamentos a mais num ano contam como extra" valor={pf.extra_por_contagem ? 'sim' : 'não'} />
         <SoLeitura rotulo="Excluir extraordinários do rendimento normal" valor={pf.excluir_extraordinarios ? 'sim' : 'não'} />
         <SoLeitura rotulo="Tendência: variação até ±… conta como igual" valor={`${numero(padrao.pagamentos.tolerancia_igual * 100, 0)}%`} />
+        <SoLeitura rotulo="Possível extraordinário: acima dos outros do ano" valor={`${numero(pf.suspeito_fator_no_ano, 1)}× a mediana`} />
+        <SoLeitura rotulo="Possível extraordinário: salto seguido de descida" valor={`+${numero(pf.suspeito_salto * 100, 0)}% e depois −${numero(pf.suspeito_descida * 100, 0)}%`} />
+        <SoLeitura rotulo="Procurar possíveis extraordinários nos últimos" valor={`${pf.suspeito_anos} anos`} />
       </Cartao>
     </div>
   )

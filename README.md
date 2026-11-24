@@ -41,7 +41,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | Página | O que tem |
 |---|---|
 | **Radar** | Todas as ações com dividendos, ordenadas pela pontuação. No PC aparece uma tabela (clique no título de uma coluna para ordenar); no telemóvel aparecem cartões, com "Ordenar por". Tem pesquisa, separadores por categoria (Empresas, REIT, BDC, Fundos fechados) e filtros: setor, país, moeda, frequência, nível de cor, yield, payout, só abaixo do preço justo, esconder armadilhas e esconder fora dos limites de yield. |
-| **Página da ação** | Todas as métricas, gráfico dos dividendos por ano (normal e extraordinário), gráfico do preço com o preço justo e os máximos/mínimos, explicação do nível de cor e da pontuação, próximas datas e as suas notas. |
+| **Página da ação** | Todas as métricas e os dois preços justos, com a frase "hoje rende X%, quando costuma render Y%". Gráfico dos dividendos **por ano** ou **por pagamento** (5 anos / 10 anos / tudo): normais a azul, extraordinários a laranja, aumentos a verde e cortes a vermelho; ao tocar num ponto vê a data, o valor e a variação. Também tem o gráfico do preço, a explicação do nível de cor e da pontuação, as próximas datas, os possíveis extraordinários, a descrição da empresa (tradução automática, com "ver original") e as suas notas. |
 | **Favoritos** | As ações marcadas com ☆. |
 | **Definições** | Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". |
 | **Sobre** | Aviso legal, explicação dos cálculos, legenda das cores e estado da última atualização. |
@@ -137,6 +137,26 @@ Dentro da pasta `pipeline`:
 
 > **Ações canadianas** (Telus, Enbridge, TD…): na XTB estão na bolsa de Nova Iorque (ex.: `TU.US`). O **rendimento** é calculado com os dados de Toronto (`T.TO`), porque é lá que o dividendo é declarado em CAD; assim o preço e o dividendo ficam na mesma moeda. A **carteira** é avaliada pela cotação da linha que tem na XTB (ex.: TU.US em USD), que vem no campo `cotacao_xtb` de cada ação.
 
+### Possíveis extraordinários (a confirmar)
+
+O pipeline assinala automaticamente pagamentos que parecem extraordinários. Os critérios são:
+- um pagamento isolado, mais de 1,5× acima dos outros pagamentos desse ano e dos pagamentos vizinhos;
+- um salto de mais de 25% seguido de uma descida de mais de 15%, comparando com o **mesmo** pagamento do ano anterior e do ano seguinte. Assim, o ritmo "intercalar pequeno + final grande" de muitas empresas europeias não conta como extraordinário.
+
+Funciona assim:
+1. Os pagamentos assinalados aparecem com ❓ e numa lista nas **Definições**, onde pode confirmar cada um (indicando a parte extra) ou rejeitá-lo.
+2. Enquanto não decidir, contam como normais.
+3. As decisões ficam no aparelho. O botão **Copiar decisões** gera as linhas para `extraordinarios.csv` (confirmados) e `extraordinarios_rejeitados.csv` (rejeitados).
+4. Na Fase 4 as decisões passam para o Supabase e o pipeline lê-as sozinho.
+
+A lista completa fica em `data/extraordinarios_suspeitos.json`.
+
+### Traduções
+
+- **Setores, indústrias, países e tipos de instrumento** são traduzidos com uma tabela fixa, em `pipeline/radar/traducoes.py`. Termos novos que não estejam na tabela ficam em inglês e aparecem em `data/meta.json` ("termos_sem_traducao").
+- A tabela de impostos por país usa os nomes em português (ex.: "Estados Unidos", "Canadá").
+- **Descrições das empresas:** são traduzidas uma vez por empresa e guardadas em cache (`pipeline/cache/traducoes.json`). Só voltam a ser traduzidas se o texto original mudar. Se a tradução falhar, a app mostra o original com a nota "tradução indisponível" e a tradução é tentada de novo na atualização seguinte. *(O serviço de tradução ainda está por escolher.)*
+
 ### Atualização parcial e falhas
 
 - `--tickers` só atualiza as ações pedidas; as outras ficam no radar tal como estavam.
@@ -170,7 +190,12 @@ Os valores entre parênteses são os valores por defeito. Todos podem ser altera
 - **Dividendo anual:** último dividendo normal × pagamentos por ano, como no Excel. Também é mostrado o total dos últimos 12 meses (TTM).
 - **Yield:** bruto = dividendo anual ÷ preço; líquido = bruto × (1 − imposto) (imposto 30%).
 - **Impostos, modo avançado:** retenção no país de origem + imposto em Portugal, com desconto da retenção até ao limite da convenção. Exemplo para os EUA: com W-8BEN, 15% + 13% = 28%; sem W-8BEN, 30% + 13% = 43%. **Estas taxas devem ser confirmadas por si.**
-- **Preço justo:** dividendo anual ÷ yield alvo (6%).
+- **Preço justo (alvo):** dividendo anual ÷ yield alvo (6%).
+- **Preço justo histórico:** dividendo anual ÷ yield habitual da própria ação nos últimos 5 anos.
+  - Em cada mês, o yield = dividendo normal anual dessa altura (sem extraordinários e com a frequência que a ação tinha nessa altura) ÷ preço desse mês.
+  - "Habitual" = a **mediana** dos meses, para um pagamento ou um mês de pânico na bolsa não distorcerem o valor.
+  - Se a ação tiver menos de 5 anos de histórico, usa os que houver; com menos de 2 anos fica vazio.
+  - Por defeito é este que conta para o "preço atrativo" da pontuação. Isso, e o número de anos, mudam-se nas Definições.
 - **Atraso:** se o pagamento esperado passou há mais de 30 dias e não há nova data anunciada, a ação é marcada **"Possivelmente suspenso"**.
 - **Consistência:** contada por anos civis completos (o ano corrente não conta). Um ano conta como **corte** se o dividendo anual descer mais de 10%. Um pagamento que só passou de dezembro para janeiro não conta como corte.
 - **Níveis de cor:**

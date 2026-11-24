@@ -24,13 +24,14 @@ interface Filtros {
   yieldMax: string
   payoutMax: string
   soAbaixoJusto: boolean
+  soAbaixoJustoHist: boolean
   esconderArmadilhas: boolean
   esconderForaBatentes: boolean
 }
 
 const FILTROS_PADRAO: Filtros = {
   texto: '', categoria: '', setor: '', pais: '', moeda: '', frequencia: '', niveis: [],
-  yieldMin: '', yieldMax: '', payoutMax: '', soAbaixoJusto: false, esconderArmadilhas: false,
+  yieldMin: '', yieldMax: '', payoutMax: '', soAbaixoJusto: false, soAbaixoJustoHist: false, esconderArmadilhas: false,
   esconderForaBatentes: true,
 }
 
@@ -41,7 +42,8 @@ const CATEGORIAS = [
 
 const ORDENACOES = [
   { id: 'pontos', t: 'Pontuação' }, { id: 'yliq', t: 'Yield líquido' }, { id: 'ybruto', t: 'Yield bruto' },
-  { id: 'nivel', t: 'Nível de consistência' }, { id: 'desconto', t: 'Desconto face ao preço justo' },
+  { id: 'nivel', t: 'Nível de consistência' }, { id: 'desconto', t: 'Desconto face ao preço justo (alvo)' },
+  { id: 'descontoH', t: 'Desconto face ao preço justo histórico' },
   { id: 'pos52', t: 'Posição 52 semanas' }, { id: 'proximo', t: 'Próximo pagamento' }, { id: 'acao', t: 'Nome' },
   { id: 'preco', t: 'Preço' },
 ]
@@ -49,6 +51,17 @@ const ORDENACOES = [
 const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')))
 const desconto = (a: AcaoCalculada) =>
   a.preco_justo_eur && a.preco_eur ? (a.preco_justo_eur - a.preco_eur) / a.preco_justo_eur : null
+const descontoH = (a: AcaoCalculada) =>
+  a.preco_justo_historico_eur && a.preco_eur ? (a.preco_justo_historico_eur - a.preco_eur) / a.preco_justo_historico_eur : null
+
+function Justo({ valor, abaixo, titulo }: { valor: number | null; abaixo: boolean; titulo: string }) {
+  return (
+    <span className={abaixo ? 'font-semibold text-emerald-700 dark:text-emerald-400' : ''}
+      title={abaixo ? `Preço atual abaixo do ${titulo}` : titulo}>
+      {euros(valor)}{abaixo ? ' ✓' : ''}
+    </span>
+  )
+}
 
 const col = createColumnHelper<AcaoCalculada>()
 
@@ -90,6 +103,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
       if (ymax != null && (yl == null || yl * 100 > ymax)) return false
       if (pmax != null && a.payout != null && a.payout * 100 > pmax) return false
       if (f.soAbaixoJusto && !a.abaixo_preco_justo) return false
+      if (f.soAbaixoJustoHist && !a.abaixo_preco_justo_historico) return false
       if (f.esconderArmadilhas && a.armadilhas.length) return false
       if (f.esconderForaBatentes && a.fora_batentes) return false
       return true
@@ -124,16 +138,14 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
     col.accessor(a => a.pagamentos_ano, { id: 'freq', header: 'Freq.', sortDescFirst: true, cell: c => c.row.original.frequencia }),
     col.accessor(a => a.preco_eur ?? 0, { id: 'preco', header: 'Preço', cell: c => euros(c.row.original.preco_eur) }),
     col.accessor(a => desconto(a) ?? -99, {
-      id: 'desconto', header: 'Preço justo', sortDescFirst: true,
-      cell: c => {
-        const a = c.row.original
-        return (
-          <span className={a.abaixo_preco_justo ? 'font-semibold text-emerald-700 dark:text-emerald-400' : ''}
-            title={a.abaixo_preco_justo ? 'Preço atual abaixo do preço justo' : undefined}>
-            {euros(a.preco_justo_eur)}{a.abaixo_preco_justo ? ' ✓' : ''}
-          </span>
-        )
-      },
+      id: 'desconto', header: `Justo ${pct(params?.preco.yield_alvo ?? 0.06, 0)}`, sortDescFirst: true,
+      cell: c => <Justo valor={c.row.original.preco_justo_eur} abaixo={c.row.original.abaixo_preco_justo}
+        titulo="preço justo (dividendo anual ÷ yield alvo)" />,
+    }),
+    col.accessor(a => descontoH(a) ?? -99, {
+      id: 'descontoH', header: 'Justo hist.', sortDescFirst: true,
+      cell: c => <Justo valor={c.row.original.preco_justo_historico_eur} abaixo={c.row.original.abaixo_preco_justo_historico}
+        titulo="preço justo histórico (dividendo anual ÷ yield habitual da ação)" />,
     }),
     col.accessor(a => a.posicao['52s'] ?? 2, {
       id: 'pos52', header: 'Pos. 52s',
@@ -151,7 +163,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
       },
     }),
     col.display({ id: 'sinais', header: 'Sinais', cell: c => <IconesSinais sinais={[...c.row.original.armadilhas, ...c.row.original.avisos]} /> }),
-  ], [favoritos, alternarFavorito, notas])
+  ], [favoritos, alternarFavorito, notas, params])
 
   const tabela = useReactTable({
     data: filtradas, columns: colunas, state: { sorting: ordem }, onSortingChange: setOrdem,
@@ -184,7 +196,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
       </div>
 
       {verLegenda && <Cartao titulo="Níveis de consistência"><Legenda />
-        <p className="mt-3 text-xs text-slate-500">Sinais: 🔥 yield muito alto · 💸 paga mais do que lucra · 📉 preço em queda · ⏰ dividendo atrasado · ↩️ pode incluir devolução de capital · 🧾 taxa de imposto não definida</p>
+        <p className="mt-3 text-xs text-slate-500">Sinais: 🔥 yield muito alto · 💸 paga mais do que lucra · 📉 preço em queda · ⏰ dividendo atrasado · ↩️ pode incluir devolução de capital · 🧾 taxa de imposto não definida · ❓ possível extraordinário a confirmar</p>
       </Cartao>}
 
       {soFavoritos && favoritos.size === 0 && (
@@ -268,7 +280,8 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
           </div>
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
             {([
-              ['soAbaixoJusto', 'Só abaixo do preço justo'],
+              ['soAbaixoJusto', `Só abaixo do preço justo (${pct(params.preco.yield_alvo, 0)})`],
+              ['soAbaixoJustoHist', 'Só abaixo do preço justo histórico'],
               ['esconderArmadilhas', 'Esconder armadilhas'],
               ['esconderForaBatentes', 'Esconder fora dos limites de yield'],
             ] as const).map(([k, t]) => (
@@ -324,8 +337,11 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
                 <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
                   <div><dt className="text-slate-500">Yield líq.</dt><dd className="font-semibold">{pct(a.yield.liquido)}</dd></div>
                   <div><dt className="text-slate-500">Preço</dt><dd className="font-semibold">{euros(a.preco_eur)}</dd></div>
-                  <div><dt className="text-slate-500">Preço justo</dt>
-                    <dd className={`font-semibold ${a.abaixo_preco_justo ? 'text-emerald-700 dark:text-emerald-400' : ''}`}>{euros(a.preco_justo_eur)}</dd></div>
+                  <div><dt className="text-slate-500">Justo {pct(params.preco.yield_alvo, 0)}</dt>
+                    <dd><Justo valor={a.preco_justo_eur} abaixo={a.abaixo_preco_justo} titulo="preço justo" /></dd></div>
+                  <div><dt className="text-slate-500">Yield habitual</dt><dd>{pct(a.yield_medio_historico)}</dd></div>
+                  <div><dt className="text-slate-500">Justo hist.</dt>
+                    <dd><Justo valor={a.preco_justo_historico_eur} abaixo={a.abaixo_preco_justo_historico} titulo="preço justo histórico" /></dd></div>
                   <div><dt className="text-slate-500">Frequência</dt><dd>{a.frequencia}</dd></div>
                   <div><dt className="text-slate-500">Pos. 52s</dt>
                     <dd className={a.perto_minimo_52s ? 'font-semibold text-emerald-700 dark:text-emerald-400' : a.perto_maximo_52s ? 'text-red-700 dark:text-red-400' : ''}>{pct(a.posicao['52s'], 0)}</dd></div>

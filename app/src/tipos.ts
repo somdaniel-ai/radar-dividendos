@@ -92,6 +92,19 @@ export interface Acao {
   preco_justo: number | null
   preco_justo_eur: number | null
   abaixo_preco_justo: boolean
+  /** yield bruto habitual (mediana mensal) da própria ação, para 1…10 anos */
+  yields_historicos: { anos_disponiveis: number; ultimo: Record<string, number>; ttm: Record<string, number> }
+  yield_medio_historico: number | null
+  anos_media_usados: number
+  preco_justo_historico: number | null
+  preco_justo_historico_eur: number | null
+  abaixo_preco_justo_historico: boolean
+  preco_justo_pontuacao: 'historico' | 'alvo'
+  extraordinarios_suspeitos: Suspeito[]
+  tipo_instrumento: string | null
+  setor_original: string | null
+  industria_original: string | null
+  pais_original: string | null
   extremos: Record<'52s' | '5a' | 'sempre', Extremo | null>
   posicao: Record<'52s' | '5a' | 'sempre', number | null>
   payout: number | null
@@ -117,8 +130,24 @@ export interface Acao {
   posicao_ranking?: number
 }
 
+export interface Suspeito {
+  data: string
+  valor: number
+  extra_estimado: number
+  motivo: string
+}
+
+export interface SuspeitoLista extends Suspeito {
+  ticker: string
+  nome: string
+  moeda: string | null
+}
+
 export interface AcaoDetalhe extends Acao {
   descricao: string | null
+  descricao_original: string | null
+  descricao_estado: 'traduzida' | 'indisponivel' | 'vazia'
+  descricao_servico: string | null
   historico_dividendos: { data: string; valor: number; extraordinario: boolean; parte_extraordinaria: number }[]
   precos: { semanal: [string, number][]; mensal: [string, number][] }
 }
@@ -152,6 +181,11 @@ export interface Parametros {
     excluir_extraordinarios: boolean
     extra_por_contagem: boolean
     fracao_intervalo_fora_ritmo: number
+    suspeitos_ativos: boolean
+    suspeito_fator_no_ano: number
+    suspeito_salto: number
+    suspeito_descida: number
+    suspeito_anos: number
   }
   rendimento: { metodo_dividendo_anual: 'ultimo' | 'ttm' }
   impostos: {
@@ -166,6 +200,8 @@ export interface Parametros {
     limite_perto_minimo: number
     limite_perto_maximo: number
     usar_precos_ajustados: boolean
+    anos_media_yield: number
+    preco_justo_pontuacao: 'historico' | 'alvo'
   }
   pagamentos: {
     modo_atraso: 'dias' | 'percentagem'

@@ -29,6 +29,12 @@ PARAMETROS_PADRAO: dict = {
         # (os que chegam "fora do ritmo", antes do tempo) contam como extraordinários
         "extra_por_contagem": True,
         "fracao_intervalo_fora_ritmo": 0.6,  # intervalo < 60% do normal = fora do ritmo
+        # possíveis extraordinários (só avisos "a confirmar", não mudam os cálculos)
+        "suspeitos_ativos": True,
+        "suspeito_fator_no_ano": 1.5,  # pagamento > 1,5× a mediana dos outros desse ano
+        "suspeito_salto": 0.25,  # subida > 25% face ao anterior…
+        "suspeito_descida": 0.15,  # …seguida de descida > 15% no seguinte
+        "suspeito_anos": 10,  # só procurar nos últimos N anos
     },
     # 6.2 Rendimento e impostos
     "rendimento": {
@@ -42,8 +48,8 @@ PARAMETROS_PADRAO: dict = {
         # retencao = taxa retida na fonte; credito_max = máximo que Portugal desconta
         # (taxa da convenção). Valores de EXEMPLO — confirmar com um contabilista.
         "por_pais": {
-            "United States": {"retencao": 0.30, "retencao_w8ben": 0.15, "credito_max": 0.15},
-            "Canada": {"retencao": 0.25, "credito_max": 0.15},
+            "Estados Unidos": {"retencao": 0.30, "retencao_w8ben": 0.15, "credito_max": 0.15},
+            "Canadá": {"retencao": 0.25, "credito_max": 0.15},
         },
     },
     # 6.3 Preço justo e posição no intervalo
@@ -52,6 +58,9 @@ PARAMETROS_PADRAO: dict = {
         "limite_perto_minimo": 0.20,
         "limite_perto_maximo": 0.80,
         "usar_precos_ajustados": False,  # posição no intervalo com máx/mín ajustados
+        # preço justo histórico = dividendo anual ÷ yield médio da própria ação nos últimos N anos
+        "anos_media_yield": 5,  # mínimo 2; se houver menos anos, usa os que houver (≥ 2)
+        "preco_justo_pontuacao": "historico",  # "historico" ou "alvo": qual conta para o "preço atrativo"
     },
     # 6.4 Pagamentos e alterações
     "pagamentos": {

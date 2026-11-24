@@ -68,6 +68,55 @@ def marcar_excesso_no_ano(div: pd.Series, pagamentos_ano: int, mediana_intervalo
     return marcas
 
 
+def suspeitos_extraordinarios(div: pd.Series, hoje_ano: int, p_freq: dict, pagamentos_ano: int = 1) -> list[dict]:
+    """Pagamentos que PODEM ser extraordinários (para o utilizador confirmar ou rejeitar).
+
+    `div` = pagamentos já considerados normais. Dois padrões:
+      1) muito acima dos outros pagamentos do mesmo ano (> fator × mediana dos outros) e
+         isolado (também muito acima dos vizinhos);
+      2) salto grande seguido de descida (ex.: 0,278 → 0,43 → 0,35), comparando com o MESMO
+         pagamento do ano anterior e do ano seguinte (o final com o final, o intercalar com o
+         intercalar), para não confundir o ritmo "intercalar pequeno + final grande" de muitas
+         empresas europeias com extraordinários.
+    Devolve [{"data", "valor", "extra_estimado", "motivo"}], só dos últimos N anos.
+    """
+    if not p_freq.get("suspeitos_ativos", True) or len(div) < 3:
+        return []
+    desde = hoje_ano - int(p_freq["suspeito_anos"])
+    out: dict[pd.Timestamp, dict] = {}
+    # 1) muito acima dos outros desse ano — e isolado (também acima dos 2 vizinhos de cada
+    #    lado), para não confundir com um aumento verdadeiro que se mantém nos meses seguintes
+    posicao = {d: i for i, d in enumerate(div.index)}
+    vals_todos = list(div.values)
+    for ano, grupo in div.groupby(div.index.year):
+        if ano < desde or len(grupo) < 3:
+            continue
+        for d, v in grupo.items():
+            outros = grupo.drop(d)
+            med = statistics.median(outros.values)
+            i = posicao[d]
+            vizinhos = vals_todos[max(0, i - 2): i] + vals_todos[i + 1: i + 3]
+            isolado = bool(vizinhos) and v > p_freq["suspeito_fator_no_ano"] * statistics.median(vizinhos)
+            if med > 0 and isolado and v > p_freq["suspeito_fator_no_ano"] * med:
+                out[d] = {"valor": float(v), "extra_estimado": float(v - med),
+                          "motivo": f"Muito acima dos outros pagamentos de {ano} ({v / med:.1f}× a mediana)."}
+    # 2) salto seguido de descida, face ao mesmo pagamento do ano anterior/seguinte
+    k = max(1, int(pagamentos_ano or 1))
+    vals, datas = list(div.values), list(div.index)
+    for i in range(k, len(vals) - k):
+        d, v = datas[i], vals[i]
+        if d.year < desde or d in out:
+            continue
+        ant, seg = vals[i - k], vals[i + k]
+        if ant > 0 and v >= ant * (1 + p_freq["suspeito_salto"]) and seg <= v * (1 - p_freq["suspeito_descida"]):
+            ref = statistics.median([ant, seg])
+            qual = "no pagamento seguinte" if k == 1 else "no mesmo pagamento do ano seguinte"
+            face = "" if k == 1 else " face ao mesmo pagamento do ano anterior"
+            out[d] = {"valor": float(v), "extra_estimado": float(max(0.0, v - ref)),
+                      "motivo": f"Subiu {v / ant - 1:.0%}{face} e {qual} desceu {1 - seg / v:.0%}."}
+    return [{"data": d.date().isoformat(), **x} for d, x in sorted(out.items())]
+
+
 def intervalos_dias(div: pd.Series) -> list[int]:
     datas = list(div.index)
     return [(b - a).days for a, b in zip(datas, datas[1:]) if (b - a).days > 0]

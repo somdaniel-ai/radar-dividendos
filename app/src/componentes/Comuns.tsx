@@ -35,6 +35,7 @@ export function Estrela({ ativa, onClick, tamanho = 'text-xl' }: { ativa: boolea
 
 const ICONES: Record<string, string> = {
   yield_alto: '🔥', payout: '💸', queda_preco: '📉', atraso: '⏰', devolucao_capital: '↩️', imposto_pais: '🧾',
+  possivel_extra: '❓',
 }
 
 export function IconesSinais({ sinais }: { sinais: Sinal[] }) {
