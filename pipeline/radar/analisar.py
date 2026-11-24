@@ -181,6 +181,9 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
         "tendencia": tend,
         "consistencia": {k: (_r(v, 4) if isinstance(v, float) else v)
                          for k, v in met.items() if k != "valores_anuais"},
+        # valores anuais comparáveis (para a app recalcular a consistência com outros limites)
+        "valores_anuais": met["valores_anuais"],
+        "ano_referencia": hoje.year,
         "nivel": niv,
         "armadilhas": arm,
         "fora_batentes": bat,

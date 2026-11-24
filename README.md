@@ -10,7 +10,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 |---|---|---|
 | 0 | Preparação (ferramentas, pastas, repositório) | ✅ concluída |
 | 1 | Motor de dados (pipeline) com a lista inicial | ✅ concluída |
-| 2 | App: Radar, página da ação e Definições | ⏳ |
+| 2 | App: Radar, página da ação e Definições | ✅ concluída |
 | 3 | Universo completo da XTB | ⏳ |
 | 4 | Supabase: login e carteira | ⏳ |
 | 5 | Simulador, Meta de rendimento e Projeção | ⏳ |
@@ -33,6 +33,65 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 - Node.js (versão LTS)
 - Python 3.12
 - GitHub CLI (`gh`)
+
+## A app
+
+**Endereço:** https://somdaniel-ai.github.io/radar-dividendos/
+
+| Página | O que tem |
+|---|---|
+| **Radar** | Todas as ações com dividendos, ordenadas pela pontuação. No PC aparece uma tabela (clique no título de uma coluna para ordenar); no telemóvel aparecem cartões, com "Ordenar por". Tem pesquisa, separadores por categoria (Empresas, REIT, BDC, Fundos fechados) e filtros: setor, país, moeda, frequência, nível de cor, yield, payout, só abaixo do preço justo, esconder armadilhas e esconder fora dos limites de yield. |
+| **Página da ação** | Todas as métricas, gráfico dos dividendos por ano (normal e extraordinário), gráfico do preço com o preço justo e os máximos/mínimos, explicação do nível de cor e da pontuação, próximas datas e as suas notas. |
+| **Favoritos** | As ações marcadas com ☆. |
+| **Definições** | Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". |
+| **Sobre** | Aviso legal, explicação dos cálculos, legenda das cores e estado da última atualização. |
+
+> Por agora, **favoritos, notas e definições ficam guardados no próprio aparelho** (PC ou iPhone). Na Fase 4 passam para o Supabase e ficam sincronizados.
+
+### Instalar no iPhone
+
+1. Abra o **Safari**. Tem de ser o Safari, não o Chrome.
+2. Vá a https://somdaniel-ai.github.io/radar-dividendos/
+3. Toque no botão **Partilhar**: o quadrado com uma seta para cima, na barra de baixo.
+4. Deslize a lista para baixo e toque em **"Adicionar ao ecrã principal"**.
+5. Confirme o nome ("Dividendos") e toque em **Adicionar**.
+6. A app aparece no ecrã principal com o ícone do radar e abre em ecrã inteiro, como uma app normal.
+
+### Instalar no PC (Chrome ou Edge)
+
+1. Abra https://somdaniel-ai.github.io/radar-dividendos/
+2. Na barra de endereço, à direita, clique no ícone de **instalar**: um ecrã com uma seta. Em alternativa, abra o menu **⋮** e escolha **"Instalar Radar de Dividendos"** (no Edge: **Aplicações → Instalar este site como uma aplicação**).
+3. A app fica no menu Iniciar e pode ser afixada na barra de tarefas.
+
+A app funciona **sem internet** com os dados da última vez que foi aberta. Quando há uma versão nova, atualiza-se sozinha.
+
+### Experimentar a app no PC antes de publicar
+
+Primeiro corra o pipeline (ver abaixo). Depois, num terminal:
+
+```
+cd app
+npm install
+npm run dev
+```
+
+Abra o endereço que aparece (normalmente http://localhost:5173/radar-dividendos/).
+
+| Comando (dentro de `app`) | O que faz |
+|---|---|
+| `npm test` | Testes da app, incluindo o teste de paridade: confirma que as fórmulas da app dão os mesmos resultados que o pipeline, para 33 ações reais e 5 conjuntos de Definições |
+| `npm run build` | Constrói a versão final da app na pasta `app/dist` |
+| `npm run icones` | Volta a gerar os ícones a partir de `public/icone.svg` |
+
+### Publicação automática
+
+A tarefa **"Publicar app"** do GitHub (`.github/workflows/publicar.yml`) faz tudo sozinha:
+1. descarrega os dados;
+2. corre os testes;
+3. constrói a app;
+4. publica-a.
+
+Corre sempre que há alterações. Também pode ser lançada à mão: no GitHub, separador **Actions** → **Publicar app** → **Run workflow**.
 
 ## Motor de dados (pipeline)
 
@@ -67,6 +126,7 @@ Dentro da pasta `pipeline`:
 | Correr os testes automáticos dos cálculos | `.venv\Scripts\python -m pytest` |
 | Recriar a lista de ações a partir do Excel antigo e do extrato da XTB | `.venv\Scripts\python ferramentas\importar_excel.py` |
 | Comparar os resultados com o Excel (grava em `privado/comparacao_excel.md`) | `.venv\Scripts\python ferramentas\comparar_excel.py` |
+| Gerar a amostra para o teste de paridade da app (depois de mudar fórmulas) | `.venv\Scripts\python ferramentas\gerar_amostra_app.py` |
 
 ### Lista de ações e símbolos
 

@@ -1,0 +1,279 @@
+import { useEffect, useState, type ReactNode } from 'react'
+import { Carregando, Cartao, Erro, NOMES_CATEGORIA } from '../componentes/Comuns'
+import { useApp, type Tema } from '../lib/contexto'
+import { numero } from '../lib/formato'
+import type { ImpostoPais, Parametros } from '../tipos'
+
+type Tipo = 'pct' | 'num' | 'bool' | 'select'
+
+function obter(obj: unknown, caminho: string): unknown {
+  return caminho.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], obj)
+}
+
+const ler = (s: string) => {
+  const n = Number(s.replace(/\s/g, '').replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+function CampoNumero({ valor, pct, onMudar, sufixo }: { valor: number; pct?: boolean; onMudar: (v: number) => void; sufixo?: string }) {
+  const mostrar = (v: number) => numero(pct ? v * 100 : v, pct ? 2 : 2).replace(/,00$/, '').replace(/(,\d)0$/, '$1')
+  const [texto, setTexto] = useState(mostrar(valor))
+  useEffect(() => setTexto(mostrar(valor)), [valor]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input inputMode="decimal" value={texto} onChange={e => setTexto(e.target.value)}
+        onBlur={() => { const n = ler(texto); if (n == null) setTexto(mostrar(valor)); else onMudar(pct ? n / 100 : n) }}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1 text-right text-base dark:border-slate-700 dark:bg-slate-950" />
+      <span className="w-6 text-sm text-slate-500">{pct ? '%' : sufixo ?? ''}</span>
+    </span>
+  )
+}
+
+function Campo({ caminho, rotulo, tipo, ajuda, opcoes, sufixo }: {
+  caminho: string; rotulo: string; tipo: Tipo; ajuda?: ReactNode; opcoes?: [string, string][]; sufixo?: string
+}) {
+  const { params, padrao, alterar } = useApp()
+  const v = obter(params, caminho)
+  const p = obter(padrao, caminho)
+  const diferente = JSON.stringify(v) !== JSON.stringify(p)
+  const textoPadrao = tipo === 'pct' ? `${numero((p as number) * 100, 2).replace(/,00$/, '')}%`
+    : tipo === 'bool' ? (p ? 'sim' : 'não') : tipo === 'select' ? opcoes?.find(o => o[0] === p)?.[1] : String(p)
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800">
+      <div className="min-w-0 flex-1">
+        <label className="text-sm font-medium" htmlFor={caminho}>{rotulo}</label>
+        {ajuda && <p className="text-xs text-slate-500">{ajuda}</p>}
+        {diferente && (
+          <button type="button" className="text-xs text-sky-700 underline dark:text-sky-400" onClick={() => alterar(caminho, p)}>
+            repor ({textoPadrao})
+          </button>
+        )}
+      </div>
+      <div id={caminho}>
+        {tipo === 'bool' && (
+          <input type="checkbox" className="size-5" checked={Boolean(v)} onChange={e => alterar(caminho, e.target.checked)} aria-label={rotulo} />
+        )}
+        {(tipo === 'pct' || tipo === 'num') && (
+          <CampoNumero valor={v as number} pct={tipo === 'pct'} onMudar={n => alterar(caminho, n)} sufixo={sufixo} />
+        )}
+        {tipo === 'select' && (
+          <select value={String(v)} onChange={e => alterar(caminho, e.target.value)} aria-label={rotulo}
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-950">
+            {opcoes?.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+          </select>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TabelaPaises() {
+  const { params, alterar } = useApp()
+  const [novo, setNovo] = useState('')
+  if (!params) return null
+  const paises = params.impostos.por_pais
+  const mudar = (pais: string, campo: keyof ImpostoPais, valor: number | undefined) => {
+    const linha = { ...paises[pais], [campo]: valor }
+    if (valor === undefined) delete linha[campo]
+    alterar('impostos.por_pais', { ...paises, [pais]: linha })
+  }
+  const remover = (pais: string) => {
+    const c = { ...paises }
+    delete c[pais]
+    alterar('impostos.por_pais', c)
+  }
+  return (
+    <div className="mt-2">
+      <p className="mb-2 text-xs text-slate-500">
+        Retenção = taxa retida no país de origem. Com W-8BEN = taxa retida se tiver o formulário W-8BEN (só EUA).
+        Crédito máx. = máximo que Portugal desconta (taxa da convenção). O nome do país tem de ser igual ao do Yahoo, em inglês (ex.: "United States", "Canada", "France").
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs text-slate-500">
+            <tr><th className="py-1">País</th><th className="py-1">Retenção</th><th className="py-1">Com W-8BEN</th><th className="py-1">Crédito máx.</th><th /></tr>
+          </thead>
+          <tbody>
+            {Object.entries(paises).map(([pais, cfg]) => (
+              <tr key={pais} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="py-1 pr-2 font-medium">{pais}</td>
+                <td className="py-1"><CampoNumero pct valor={cfg.retencao} onMudar={n => mudar(pais, 'retencao', n)} /></td>
+                <td className="py-1">{cfg.retencao_w8ben !== undefined
+                  ? <CampoNumero pct valor={cfg.retencao_w8ben} onMudar={n => mudar(pais, 'retencao_w8ben', n)} />
+                  : <button type="button" className="text-xs text-sky-700 underline dark:text-sky-400" onClick={() => mudar(pais, 'retencao_w8ben', cfg.retencao)}>definir</button>}</td>
+                <td className="py-1"><CampoNumero pct valor={cfg.credito_max ?? cfg.retencao} onMudar={n => mudar(pais, 'credito_max', n)} /></td>
+                <td className="py-1"><button type="button" onClick={() => remover(pais)} className="text-red-600" aria-label={`Remover ${pais}`}>✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <form className="mt-2 flex gap-2" onSubmit={e => {
+        e.preventDefault()
+        const n = novo.trim()
+        if (n && !paises[n]) alterar('impostos.por_pais', { ...paises, [n]: { retencao: 0.15, credito_max: 0.15 } })
+        setNovo('')
+      }}>
+        <input value={novo} onChange={e => setNovo(e.target.value)} placeholder="Acrescentar país (ex.: France)"
+          className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950" />
+        <button type="submit" className="rounded-lg bg-slate-900 px-3 py-1 text-sm text-white dark:bg-white dark:text-slate-900">Acrescentar</button>
+      </form>
+    </div>
+  )
+}
+
+function CategoriasPayout() {
+  const { params, alterar } = useApp()
+  if (!params) return null
+  const lista = params.pontuacao.armadilha_payout_ignorar_categorias
+  return (
+    <div className="border-b border-slate-100 py-2.5 dark:border-slate-800">
+      <p className="text-sm font-medium">Ignorar o sinal de payout nestas categorias</p>
+      <p className="text-xs text-slate-500">Nos REIT, BDC e fundos o lucro contabilístico não mostra bem o dinheiro disponível para distribuir.</p>
+      <div className="mt-1 flex flex-wrap gap-3">
+        {['EMPRESA', 'REIT', 'BDC', 'CEF', 'ETF'].map(c => (
+          <label key={c} className="flex items-center gap-1.5 text-sm">
+            <input type="checkbox" className="size-4" checked={lista.includes(c)}
+              onChange={e => alterar('pontuacao.armadilha_payout_ignorar_categorias', e.target.checked ? [...lista, c] : lista.filter(x => x !== c))} />
+            {NOMES_CATEGORIA[c]}
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SoLeitura({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div className="flex justify-between gap-3 border-b border-slate-100 py-1.5 text-sm last:border-0 dark:border-slate-800">
+      <span className="text-slate-600 dark:text-slate-300">{rotulo}</span><span className="font-medium">{valor}</span>
+    </div>
+  )
+}
+
+export function Definicoes() {
+  const { params, padrao, aCarregar, erro, repor, personalizado, tema, setTema } = useApp()
+  if (erro) return <Erro texto={erro} />
+  if (aCarregar || !params || !padrao) return <Carregando />
+  const pf: Parametros['frequencia'] = padrao.frequencia
+  const somaPesos = params.pontuacao.peso_rendimento + params.pontuacao.peso_consistencia + params.pontuacao.peso_preco
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-bold">Definições</h1>
+          <p className="text-sm text-slate-500">As alterações aplicam-se logo a todo o radar. Ficam guardadas neste aparelho (na Fase 4 passam a ser sincronizadas entre PC e iPhone).</p>
+        </div>
+        <button type="button" disabled={!personalizado}
+          onClick={() => { if (confirm('Repor todos os valores por defeito?')) repor() }}
+          className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-slate-900">
+          Repor valores por defeito
+        </button>
+      </div>
+
+      <Cartao titulo="Aparência">
+        <div className="flex flex-wrap gap-2">
+          {([['auto', 'Automático'], ['claro', 'Claro'], ['escuro', 'Escuro']] as [Tema, string][]).map(([k, t]) => (
+            <button key={k} type="button" aria-pressed={tema === k} onClick={() => setTema(k)}
+              className={`rounded-full px-3 py-1 text-sm ${tema === k ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'ring-1 ring-slate-300 dark:ring-slate-700'}`}>{t}</button>
+          ))}
+        </div>
+      </Cartao>
+
+      <Cartao titulo="Rendimento e impostos">
+        <Campo caminho="rendimento.metodo_dividendo_anual" rotulo="Dividendo anual" tipo="select"
+          opcoes={[['ultimo', 'Último dividendo × pagamentos/ano (como o Excel)'], ['ttm', 'Soma dos últimos 12 meses (TTM)']]} />
+        <Campo caminho="impostos.modo" rotulo="Modo de impostos" tipo="select"
+          opcoes={[['simples', 'Simples (taxa única)'], ['avancado', 'Avançado (por país + Portugal)']]} />
+        {params.impostos.modo === 'simples' ? (
+          <Campo caminho="impostos.taxa_simples" rotulo="Taxa única sobre os dividendos" tipo="pct" />
+        ) : (
+          <>
+            <Campo caminho="impostos.taxa_portugal" rotulo="Imposto em Portugal" tipo="pct" />
+            <Campo caminho="impostos.w8ben_ativo" rotulo="Tenho o formulário W-8BEN (EUA)" tipo="bool"
+              ajuda="Com o W-8BEN os EUA retêm 15% em vez de 30%." />
+            <TabelaPaises />
+            <p className="mt-2 rounded-xl bg-amber-50 p-2 text-xs text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-900">
+              Total = retenção + máx(0; imposto PT − mín(retenção; crédito máx.)). As taxas são exemplos: <b>confirme-as</b> (por exemplo, com um contabilista). Países sem taxa definida usam só o imposto português e aparecem com o aviso 🧾.
+            </p>
+          </>
+        )}
+      </Cartao>
+
+      <Cartao titulo="Preço justo e intervalos">
+        <Campo caminho="preco.yield_alvo" rotulo="Yield alvo (preço justo = dividendo anual ÷ yield alvo)" tipo="pct" />
+        <Campo caminho="preco.limite_perto_minimo" rotulo="Destacar perto do mínimo (posição ≤)" tipo="pct" />
+        <Campo caminho="preco.limite_perto_maximo" rotulo="Destacar perto do máximo (posição ≥)" tipo="pct" />
+        <Campo caminho="preco.usar_precos_ajustados" rotulo="Usar máximos/mínimos ajustados" tipo="bool"
+          ajuda="Ajustados = corrigidos pelos dividendos pagos (fator = preço ajustado ÷ preço)." />
+      </Cartao>
+
+      <Cartao titulo="Pagamentos atrasados">
+        <Campo caminho="pagamentos.modo_atraso" rotulo="Considerar atrasado quando passar" tipo="select"
+          opcoes={[['dias', 'Um nº fixo de dias'], ['percentagem', 'Uma % do intervalo normal']]} />
+        {params.pagamentos.modo_atraso === 'dias'
+          ? <Campo caminho="pagamentos.dias_atraso" rotulo="Dias de tolerância" tipo="num" sufixo="dias" />
+          : <Campo caminho="pagamentos.percentagem_atraso" rotulo="Tolerância (% do intervalo normal)" tipo="pct" />}
+      </Cartao>
+
+      <Cartao titulo="Consistência e cores">
+        <Campo caminho="consistencia.limite_corte" rotulo="Corte = descida anual superior a" tipo="pct" />
+        <Campo caminho="consistencia.limite_aumento" rotulo="Aumento = subida anual superior a" tipo="pct" />
+        <Campo caminho="consistencia.min_pagamentos_historico" rotulo="Mínimo de pagamentos (menos = pouco histórico)" tipo="num" />
+        <Campo caminho="consistencia.nivel6_anos_sem_corte" rotulo="Dourado escuro: anos sem cortes ≥" tipo="num" />
+        <Campo caminho="consistencia.nivel6_aumentos_em_10_anos" rotulo="Dourado escuro: aumentos nos últimos 10 anos ≥" tipo="num" />
+        <Campo caminho="consistencia.nivel6_anos_seguidos_aumento" rotulo="Dourado escuro: ou anos seguidos de aumento ≥" tipo="num" />
+        <Campo caminho="consistencia.nivel5_anos_sem_corte" rotulo="Dourado claro: anos sem cortes ≥" tipo="num" />
+        <Campo caminho="consistencia.nivel4_anos_sem_corte" rotulo="Verde escuro: anos sem cortes ≥" tipo="num" />
+        <Campo caminho="consistencia.nivel3_anos_sem_corte" rotulo="Verde médio: anos sem cortes ≥" tipo="num" />
+        <Campo caminho="consistencia.nivel1_cortes_em_5_anos" rotulo="Verde muito claro: cortes em 5 anos ≥" tipo="num" />
+      </Cartao>
+
+      <Cartao titulo="Pontuação">
+        <Campo caminho="pontuacao.peso_rendimento" rotulo="Peso do rendimento" tipo="pct" />
+        <Campo caminho="pontuacao.peso_consistencia" rotulo="Peso da consistência" tipo="pct" />
+        <Campo caminho="pontuacao.peso_preco" rotulo="Peso do preço atrativo" tipo="pct" />
+        {Math.abs(somaPesos - 1) > 1e-6 && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">Os pesos somam {numero(somaPesos * 100, 0)}% — a app usa-os na proporção (equivale a dividir pela soma).</p>
+        )}
+        <Campo caminho="pontuacao.batentes_ativos" rotulo="Batentes de yield ativos" tipo="bool" ajuda="Fora destes limites a ação é marcada e, por defeito, escondida no radar." />
+        <Campo caminho="pontuacao.yield_minimo" rotulo="Yield líquido mínimo" tipo="pct" />
+        <Campo caminho="pontuacao.yield_maximo" rotulo="Yield líquido máximo" tipo="pct" />
+        <Campo caminho="pontuacao.desconto_para_nota_maxima" rotulo="Desconto face ao preço justo para nota máxima" tipo="pct" />
+      </Cartao>
+
+      <Cartao titulo="Armadilhas de rendimento">
+        <Campo caminho="pontuacao.armadilhas_ativas" rotulo="Detetar armadilhas" tipo="bool" />
+        <Campo caminho="pontuacao.penalizacao_por_armadilha" rotulo="Pontos retirados por cada sinal" tipo="num" sufixo="pts" />
+        <Campo caminho="pontuacao.armadilha_yield_acima_maximo" rotulo="🔥 Yield acima do máximo" tipo="bool" />
+        <Campo caminho="pontuacao.armadilha_payout" rotulo="💸 Payout acima do limite" tipo="bool" />
+        <Campo caminho="pontuacao.armadilha_payout_limite" rotulo="Limite do payout" tipo="pct" />
+        <CategoriasPayout />
+        <Campo caminho="pontuacao.armadilha_queda_preco" rotulo="📉 Queda do preço em 12 meses" tipo="bool" />
+        <Campo caminho="pontuacao.armadilha_queda_limite" rotulo="Queda superior a" tipo="pct" />
+        <Campo caminho="pontuacao.armadilha_atraso" rotulo="⏰ Dividendo atrasado" tipo="bool" />
+      </Cartao>
+
+      <Cartao titulo="Simulador">
+        <Campo caminho="simulador.investimento_padrao" rotulo="Valor a investir por defeito" tipo="num" sufixo="€" ajuda="Usado no Simulador (Fase 5)." />
+      </Cartao>
+
+      <Cartao titulo="Motor de dados (só leitura)">
+        <p className="mb-2 text-xs text-slate-500">
+          Estes parâmetros são aplicados quando os dados são descarregados (todas as noites), porque precisam do histórico completo de cada ação.
+          Para os alterar, peça-me para mudar <code>pipeline/radar/parametros.py</code>.
+        </p>
+        <SoLeitura rotulo="Excluir quem não paga há mais de" valor={`${padrao.universo.meses_sem_dividendo_para_excluir} meses`} />
+        <SoLeitura rotulo="Intervalos usados na mediana (frequência)" valor={String(pf.num_intervalos_mediana)} />
+        <SoLeitura rotulo="Mensal / Trimestral / Semestral / Anual (dias)"
+          valor={['mensal', 'trimestral', 'semestral', 'anual'].map(k => pf.limites_dias[k].join('–')).join(' · ')} />
+        <SoLeitura rotulo="Extraordinário se maior do que" valor={`${numero(pf.fator_extraordinario, 1)}× a mediana`} />
+        <SoLeitura rotulo="Pagamentos a mais num ano contam como extra" valor={pf.extra_por_contagem ? 'sim' : 'não'} />
+        <SoLeitura rotulo="Excluir extraordinários do rendimento normal" valor={pf.excluir_extraordinarios ? 'sim' : 'não'} />
+        <SoLeitura rotulo="Tendência: variação até ±… conta como igual" valor={`${numero(padrao.pagamentos.tolerancia_igual * 100, 0)}%`} />
+      </Cartao>
+    </div>
+  )
+}

@@ -46,6 +46,7 @@ pipeline/.cache/
 
 # Dados gerados pelo pipeline (publicados pelo GitHub Actions, não guardados no Git)
 /data/
+app/public/data/
 *.log
 
 # Supabase local

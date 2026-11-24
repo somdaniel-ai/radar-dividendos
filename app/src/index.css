@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* modo escuro controlado pela classe .dark no <html> (automático, claro ou escuro) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* cores dos níveis de consistência (as cores do Excel) */
+  --color-nivel-6: #9a6b00;
+  --color-nivel-5: #e0b42b;
+  --color-nivel-4: #1e6b34;
+  --color-nivel-3: #3f9a4f;
+  --color-nivel-2: #9fd3a5;
+  --color-nivel-1: #dff1e1;
+  --color-nivel-0: #c62828;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  background: #f6f7f9;
+}
+html.dark {
+  background: #0b1220;
+  color-scheme: dark;
+}
+body {
+  margin: 0;
+  min-height: 100dvh;
+}
+/* espaço para a barra de navegação do iPhone (zona do "home indicator") */
+.pb-seguro {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 4.5rem);
+}
+@media (min-width: 768px) {
+  .pb-seguro {
+    padding-bottom: 2rem;
+  }
+}
+.barra-inferior {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.topo-seguro {
+  padding-top: env(safe-area-inset-top);
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

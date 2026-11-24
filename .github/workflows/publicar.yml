@@ -1,0 +1,79 @@
+# Descarrega os dados, corre os testes, constrói a app e publica-a no GitHub Pages.
+# Corre sempre que há alterações na app ou no pipeline, e a pedido (botão "Run workflow").
+# (A atualização automática todas as noites é acrescentada na Fase 3.)
+name: Publicar app
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "pipeline/**", ".github/workflows/publicar.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Recuperar a cópia local dos dados (cache)
+        uses: actions/cache@v4
+        with:
+          path: |
+            pipeline/cache
+            data
+          key: dados-${{ github.run_id }}
+          restore-keys: dados-
+
+      - name: Instalar o pipeline
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Testes do pipeline
+        working-directory: pipeline
+        run: python -m pytest -q
+
+      - name: Descarregar dados e calcular
+        working-directory: pipeline
+        run: python -m radar.gerar
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Instalar, testar e construir a app
+        working-directory: app
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
