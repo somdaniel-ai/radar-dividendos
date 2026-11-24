@@ -1,0 +1,62 @@
+# ============================================================
+#  NUNCA enviar para o GitHub (repositório público!)
+# ============================================================
+
+# Dados pessoais: Excel, extratos da XTB, etc.
+privado/
+**/privado/
+
+# Ficheiros de segredos (chaves, tokens)
+.env
+.env.*
+*.env
+!.env.example
+segredos*
+secrets*
+*.pem
+*.key
+
+# Ficheiros Excel/extratos soltos fora da pasta privado (por segurança)
+*.xlsx
+*.xlsm
+*.xls
+EUR_*.xlsx
+
+# ============================================================
+#  Ficheiros gerados automaticamente (não interessam no Git)
+# ============================================================
+
+# Node.js / app
+node_modules/
+app/dist/
+app/dev-dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Python / pipeline
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+pipeline/cache/
+pipeline/.cache/
+*.log
+
+# Supabase local
+supabase/.temp/
+supabase/.branches/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.claude/settings.local.json
+
+# Instruções do projeto (contêm o número de conta da XTB)
+PROMPT_CLAUDE_CODE.md
