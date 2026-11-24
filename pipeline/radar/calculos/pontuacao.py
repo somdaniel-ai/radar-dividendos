@@ -18,14 +18,19 @@ def fora_batentes(yield_liquido: float | None, p_pont: dict) -> str | None:
 
 
 def armadilhas(yield_liquido: float | None, payout: float | None, variacao_12m: float | None,
-               atrasado: bool, p_pont: dict) -> list[dict]:
-    """Sinais de "armadilha de rendimento" (yield alto que pode não ser sustentável)."""
+               atrasado: bool, p_pont: dict, categoria: str | None = None) -> list[dict]:
+    """Sinais de "armadilha de rendimento" (yield alto que pode não ser sustentável).
+
+    O sinal de payout é ignorado nas categorias de `armadilha_payout_ignorar_categorias`
+    (por defeito REIT, BDC, fundos fechados e ETF).
+    """
     if not p_pont["armadilhas_ativas"]:
         return []
     out = []
+    payout_conta = categoria not in p_pont.get("armadilha_payout_ignorar_categorias", [])
     if p_pont["armadilha_yield_acima_maximo"] and yield_liquido is not None and yield_liquido > p_pont["yield_maximo"]:
         out.append({"codigo": "yield_alto", "texto": f"Yield líquido acima de {p_pont['yield_maximo']:.0%}."})
-    if p_pont["armadilha_payout"] and payout is not None and payout > p_pont["armadilha_payout_limite"]:
+    if p_pont["armadilha_payout"] and payout_conta and payout is not None and payout > p_pont["armadilha_payout_limite"]:
         out.append({"codigo": "payout", "texto": f"Paga mais do que lucra (payout de {payout:.0%})."})
     if p_pont["armadilha_queda_preco"] and variacao_12m is not None and variacao_12m < -p_pont["armadilha_queda_limite"]:
         out.append({"codigo": "queda_preco", "texto": f"Preço caiu {-variacao_12m:.0%} em 12 meses."})

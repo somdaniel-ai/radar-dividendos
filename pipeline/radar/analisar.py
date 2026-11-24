@@ -6,7 +6,7 @@ import math
 
 import pandas as pd
 
-from .calculos import consistencia, frequencia, pagamentos, pontuacao, precos, rendimento
+from .calculos import categoria, consistencia, frequencia, pagamentos, pontuacao, precos, rendimento
 
 
 def _r(x, n=6):
@@ -22,20 +22,59 @@ def _data(d) -> str | None:
     return pd.Timestamp(d).date().isoformat()
 
 
+def _extras_manuais(div: pd.Series, extras: dict[str, float] | None) -> pd.Series:
+    """Parte extraordinária declarada à mão de cada pagamento (aceita ±5 dias de diferença)."""
+    parte = pd.Series(0.0, index=div.index)
+    for d, v in (extras or {}).items():
+        if len(div) == 0:
+            break
+        ts = pd.Timestamp(d)
+        perto = div.index[abs((div.index - ts).days) <= 5]
+        if len(perto):
+            alvo = perto[abs((perto - ts).days).argmin()]
+            parte[alvo] = min(v, float(div[alvo]))
+    return parte
+
+
 def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil: dict,
-             cambio_eur: float | None, hoje: dt.date, p: dict) -> dict:
+             cambio_eur: float | None, hoje: dt.date, p: dict,
+             extras_manuais: dict[str, float] | None = None, cotacao_xtb: dict | None = None) -> dict:
     """Calcula todas as métricas de um instrumento.
 
     `base` tem a identificação vinda do universo (ticker_xtb, ticker_yahoo, nome, tipo).
     `cambio_eur` = quantos EUR vale 1 unidade da moeda do instrumento (GBp já dividido por 100).
+    `extras_manuais` = {data: valor} da parte extraordinária de pagamentos (extraordinarios.csv).
+    `cotacao_xtb` = cotação da linha que existe na XTB quando os dados de rendimento vêm de
+    outra bolsa (ex.: TU.US em USD, com dados de T.TO): {'simbolo','preco','moeda','variacao_dia','cambio_eur'}.
     Devolve {'resumo': {...}, 'detalhe': {...}}.
     """
     pf, pp, pc, pt = p["frequencia"], p["preco"], p["consistencia"], p["pontuacao"]
 
     div = frequencia.limpar_dividendos(dividendos)
-    extra = frequencia.marcar_extraordinarios(div, pf["fator_extraordinario"], pf["janela_extraordinario"])
-    normais = div[~extra] if pf["excluir_extraordinarios"] else div
+    # 1) extras declarados à mão: separa a parte extra do pagamento
+    parte_manual = _extras_manuais(div, extras_manuais)
+    base_div = (div - parte_manual)
+    base_div = base_div[base_div > 1e-9]
+    # 2) extras pelo valor (> 2× a mediana dos vizinhos)
+    extra = frequencia.marcar_extraordinarios(base_div, pf["fator_extraordinario"], pf["janela_extraordinario"])
+    # 3) extras pela contagem (pagamentos a mais num ano, fora do ritmo)
+    if pf.get("extra_por_contagem", True):
+        cand = base_div[~extra]
+        f0 = frequencia.detetar_frequencia(cand, pf)
+        por_contagem = frequencia.marcar_excesso_no_ano(cand, f0["pagamentos_ano"], f0["mediana_intervalo"],
+                                                        pf["fracao_intervalo_fora_ritmo"])
+        extra = extra | por_contagem.reindex(extra.index, fill_value=False)
+    normais = base_div[~extra] if pf["excluir_extraordinarios"] else div
     freq = frequencia.detetar_frequencia(normais, pf)
+    # parte extraordinária de cada pagamento (para o histórico e para o TTM)
+    parte_extra = parte_manual.add(base_div[extra], fill_value=0.0).reindex(div.index, fill_value=0.0)
+    tem_extra = parte_extra > 1e-9
+
+    cat = categoria.detetar_categoria(base.get("tipo"), perfil.get("tipo_yahoo"), perfil.get("industria"),
+                                      perfil.get("descricao"), perfil.get("nome") or base.get("nome"))
+    avisos = []
+    if cat == "CEF":
+        avisos.append({"codigo": "devolucao_capital", "texto": categoria.AVISO_CEF})
 
     preco = perfil.get("preco")
     if preco is None and df_precos is not None and len(df_precos):
@@ -48,6 +87,17 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
     anual_eur = da["anual"] * fx if fx else None
     imposto = rendimento.taxa_imposto(perfil.get("pais"), p["impostos"])
     y = rendimento.yields(anual_eur or 0.0, preco_eur, imposto["taxa"])
+    if not imposto["conhecida"]:
+        avisos.append({"codigo": "imposto_pais", "texto": f"Sem taxa de retenção definida para "
+                       f"{perfil.get('pais') or 'este país'}: foi usado só o imposto português."})
+
+    # cotação na XTB (para a carteira): igual à principal, exceto quando os dados vêm de outra bolsa
+    if cotacao_xtb and cotacao_xtb.get("preco") is not None:
+        cx = dict(cotacao_xtb)
+    else:
+        cx = {"simbolo": base["ticker_yahoo"], "preco": preco, "moeda": perfil.get("moeda"),
+              "variacao_dia": perfil.get("variacao_dia"), "cambio_eur": fx}
+    cx["preco_eur"] = cx["preco"] * cx["cambio_eur"] if (cx.get("preco") is not None and cx.get("cambio_eur")) else None
 
     justo = precos.preco_justo(da["anual"], pp["yield_alvo"])
     justo_eur = justo * fx if (justo and fx) else None
@@ -66,7 +116,7 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
     sem_dados = preco is None or not fx or len(div) == 0
     niv = consistencia.nivel(met, freq["pagamentos_ano"], atrasado, sem_dados, pc)
 
-    arm = pontuacao.armadilhas(y["liquido"], perfil.get("payout"), var12, atrasado, pt)
+    arm = pontuacao.armadilhas(y["liquido"], perfil.get("payout"), var12, atrasado, pt, cat)
     bat = pontuacao.fora_batentes(y["liquido"], pt)
     pont = pontuacao.pontuacao(y["liquido"], niv["nivel"], met, preco_eur, justo_eur, pos.get("52s"), arm, pt)
 
@@ -79,6 +129,9 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
         "nome": perfil.get("nome") or base.get("nome"),
         "tipo": base.get("tipo"),
         "tipo_yahoo": perfil.get("tipo_yahoo"),
+        "categoria": cat,
+        "categoria_nome": categoria.CATEGORIAS[cat],
+        "avisos": avisos,
         "setor": perfil.get("setor"),
         "industria": perfil.get("industria"),
         "pais": perfil.get("pais"),
@@ -90,6 +143,9 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
         "preco_eur": _r(preco_eur),
         "variacao_dia": _r(perfil.get("variacao_dia")),
         "variacao_12m": _r(var12),
+        "cotacao_xtb": {"simbolo": cx.get("simbolo"), "preco": _r(cx.get("preco")), "moeda": cx.get("moeda"),
+                        "variacao_dia": _r(cx.get("variacao_dia")), "cambio_eur": _r(cx.get("cambio_eur"), 8),
+                        "preco_eur": _r(cx.get("preco_eur"))},
         "dividendo": {
             "ultimo": _r(da["ultimo"]),
             "ultimo_data": _data(ultima),
@@ -99,8 +155,8 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
             "ttm_eur": _r(da["ttm"] * fx) if fx else None,
             "ttm_total": _r(da["ttm_total"]),
             "metodo": da["metodo_usado"],
-            "num_extraordinarios": int(extra.sum()),
-            "ultimo_extraordinario": _data(div[extra].index[-1]) if extra.any() else None,
+            "num_extraordinarios": int(tem_extra.sum()),
+            "ultimo_extraordinario": _data(div[tem_extra].index[-1]) if tem_extra.any() else None,
         },
         "frequencia": freq["nome"],
         "pagamentos_ano": freq["pagamentos_ano"],
@@ -134,9 +190,11 @@ def analisar(base: dict, df_precos: pd.DataFrame, dividendos: pd.Series, perfil:
 
     detalhe = {
         **resumo,
+        "descricao": (perfil.get("descricao") or None),
         "historico_dividendos": [
-            {"data": _data(d), "valor": _r(v), "extraordinario": bool(e)}
-            for (d, v), e in zip(div.items(), extra.values)
+            {"data": _data(d), "valor": _r(v), "extraordinario": bool(parte_extra[d] > 1e-9),
+             "parte_extraordinaria": _r(parte_extra[d])}
+            for d, v in div.items()
         ],
         "valores_anuais": met["valores_anuais"],
         "precos": _serie_precos(df_precos, hoje),

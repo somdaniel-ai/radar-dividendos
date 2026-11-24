@@ -2,7 +2,7 @@
 
 Uso (dentro da pasta `pipeline`):
     python -m radar.gerar                 # todas as ações do universo
-    python -m radar.gerar --tickers KO.US,NOS.PT
+    python -m radar.gerar --tickers KO.US,NOS.PT   # só estas; as restantes mantêm-se no radar
     python -m radar.gerar --limite 10     # só as 10 primeiras (para testar)
 """
 from __future__ import annotations
@@ -36,6 +36,13 @@ def _escrever(caminho: Path, dados) -> None:
                        encoding="utf-8")
 
 
+def _ler_json(caminho: Path, padrao):
+    try:
+        return json.loads(caminho.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return padrao
+
+
 def _normalizar(texto: str | None) -> str:
     t = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9 ]", " ", t)
@@ -48,7 +55,7 @@ def _primeira_palavra(nome: str | None) -> str | None:
     return None
 
 
-def _descobrir(f: Fornecedor, cache: Cache, item: dict, hoje: dt.date):
+def _descobrir(f: Fornecedor, cache: Cache, item: dict, hoje: dt.date, pasta_universo: Path):
     """Se o símbolo convertido falhar, pesquisa no Yahoo pelo ticker e pelo nome (como o
     `DescobrirsufixoYahoo` do Excel) e guarda o resultado para não repetir."""
     base = item["ticker_xtb"].rsplit(".", 1)[0]
@@ -66,31 +73,63 @@ def _descobrir(f: Fornecedor, cache: Cache, item: dict, hoje: dt.date):
     for simbolo in dict.fromkeys(preferidos + simbolos):
         try:
             precos, div = cache.historico(simbolo, hoje)
-            uni.guardar_descoberto(item["ticker_xtb"], simbolo)
-            log.info("%s: símbolo descoberto → %s", item["ticker_xtb"], simbolo)
+            uni.guardar_descoberto(item["ticker_xtb"], simbolo, pasta_universo)
+            log.info("%s: símbolo descoberto -> %s", item["ticker_xtb"], simbolo)
             return simbolo, precos, div
         except ErroFornecedor:
             continue
     raise ErroFornecedor("Símbolo não encontrado no Yahoo")
 
 
+def _cotacao_xtb(f: Fornecedor, cache: Cache, item: dict, agora: dt.datetime) -> dict | None:
+    """Cotação da linha que existe na XTB, quando os dados de rendimento vêm de outra bolsa
+    (ex.: Telus: dados de T.TO em CAD, mas na XTB é TU.US em USD)."""
+    simbolo = item.get("ticker_yahoo_xtb")
+    if not simbolo or simbolo == item["ticker_yahoo"]:
+        return None
+    try:
+        pf = cache.perfil(simbolo, agora)
+        return {"simbolo": simbolo, "preco": pf.get("preco"), "moeda": pf.get("moeda"),
+                "variacao_dia": pf.get("variacao_dia"), "cambio_eur": f.obter_cambio(pf.get("moeda"))}
+    except ErroFornecedor as e:
+        log.warning("%s: cotação XTB (%s) indisponível: %s", item["ticker_xtb"], simbolo, e)
+        return None
+
+
 def executar(saida: Path, tickers: list[str] | None = None, limite: int | None = None,
-             fornecedor: Fornecedor | None = None, pasta_cache: Path | None = None) -> dict:
+             fornecedor: Fornecedor | None = None, pasta_cache: Path | None = None,
+             pasta_universo: Path | None = None, agora: dt.datetime | None = None) -> dict:
+    """Atualiza as ações pedidas e grava os JSON.
+
+    Atualização parcial (`tickers` ou `limite`): as ações que não foram pedidas mantêm-se
+    no radar tal como estavam. Em qualquer modo, se uma ação falhar e já existir uma
+    versão anterior, essa versão é mantida e marcada como desatualizada.
+    """
     inicio = time.time()
-    agora = dt.datetime.now(LISBOA)
+    agora = agora or dt.datetime.now(LISBOA)
     hoje = agora.date()
     p = parametros()
     f = fornecedor or Yahoo()
+    pasta_universo = pasta_universo or uni.PASTA
     cache = Cache(pasta_cache or (RAIZ / "pipeline" / "cache"), f)
+    extras = uni.ler_extraordinarios(pasta_universo)
 
-    itens = uni.ler_universo()
+    todos = uni.ler_universo(pasta_universo)
+    no_universo = {i["ticker_xtb"] for i in todos}
+    itens = todos
     if tickers:
         pedidos = {t.upper() for t in tickers}
         itens = [i for i in itens if i["ticker_xtb"] in pedidos]
+        for t in sorted(pedidos - no_universo):
+            log.warning("%s não está no universo (universo_xtb.csv) — ignorado", t)
     if limite:
         itens = itens[:limite]
+    parcial = bool(tickers or limite)
 
-    resumos, sem_dividendos, erros = [], [], []
+    antigo_radar = {a["ticker"]: a for a in _ler_json(saida / "radar.json", {}).get("acoes", [])}
+    antigo_meta = _ler_json(saida / "meta.json", {})
+
+    novos, sem_dividendos, erros = {}, [], []
     for n, item in enumerate(itens, 1):
         t = item["ticker_xtb"]
         log.info("[%s/%s] %s (%s)", n, len(itens), t, item["ticker_yahoo"])
@@ -99,33 +138,61 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
                 try:
                     precos, div = cache.historico(item["ticker_yahoo"], hoje)
                 except ErroFornecedor:
-                    item["ticker_yahoo"], precos, div = _descobrir(f, cache, item, hoje)
+                    item["ticker_yahoo"], precos, div = _descobrir(f, cache, item, hoje, pasta_universo)
             else:
-                item["ticker_yahoo"], precos, div = _descobrir(f, cache, item, hoje)
+                item["ticker_yahoo"], precos, div = _descobrir(f, cache, item, hoje, pasta_universo)
             perfil = cache.perfil(item["ticker_yahoo"], agora)
             fx = f.obter_cambio(perfil.get("moeda"))
-            r = analisar(item, precos, div, perfil, fx, hoje, p)
+            r = analisar(item, precos, div, perfil, fx, hoje, p, extras.get(t),
+                         _cotacao_xtb(f, cache, item, agora))
         except Exception as e:  # noqa: BLE001 — uma ação nunca pode parar o pipeline
             log.error("%s: %s", t, e)
             erros.append({"ticker": t, "ticker_yahoo": item.get("ticker_yahoo"), "erro": str(e)})
             continue
         if not r["resumo"]["pagou_recentemente"]:
             sem_dividendos.append(t)
+            (saida / "acoes" / f"{t}.json").unlink(missing_ok=True)
             continue
+        r["resumo"]["atualizado_em"] = agora.isoformat(timespec="seconds")
+        r["detalhe"]["atualizado_em"] = r["resumo"]["atualizado_em"]
+        r["resumo"]["desatualizado"] = False
         _escrever(saida / "acoes" / f"{t}.json", r["detalhe"])
-        resumos.append(r["resumo"])
+        novos[t] = r["resumo"]
 
-    resumos.sort(key=lambda x: x["pontuacao"]["total"], reverse=True)
+    processados = {i["ticker_xtb"] for i in itens}
+    com_erro = {e["ticker"] for e in erros}
+    resultado = dict(novos)
+    # ações com erro: mantém a versão anterior (marcada como desatualizada)
+    for t in com_erro & antigo_radar.keys():
+        resultado[t] = {**antigo_radar[t], "desatualizado": True}
+    # atualização parcial: mantém as ações que não foram pedidas
+    if parcial:
+        for t, a in antigo_radar.items():
+            if t not in processados and t in no_universo:
+                resultado[t] = a
+    resumos = sorted(resultado.values(), key=lambda x: x["pontuacao"]["total"], reverse=True)
     for i, r in enumerate(resumos, 1):
         r["posicao_ranking"] = i
 
-    moedas = sorted({r["moeda"] for r in resumos if r.get("moeda")})
-    cambios = {m: f.obter_cambio(m) for m in moedas}
+    if parcial:
+        sem_dividendos = sorted((set(antigo_meta.get("sem_dividendos_recentes", [])) - processados)
+                                | set(sem_dividendos))
+        erros = [e for e in antigo_meta.get("erros", []) if e["ticker"] not in processados] + erros
+
+    cambios = _ler_json(saida / "cambios.json", {}).get("eur_por_unidade", {}) if parcial else {}
+    for m in sorted({r["moeda"] for r in novos.values() if r.get("moeda")}
+                    | {r["cotacao_xtb"]["moeda"] for r in novos.values() if r.get("cotacao_xtb", {}).get("moeda")}):
+        cambios[m] = f.obter_cambio(m)
+
     meta = {
         "gerado_em": agora.isoformat(timespec="seconds"),
         "data_referencia": hoje.isoformat(),
         "fornecedor": f.nome,
-        "total_universo": len(itens),
+        "tipo_atualizacao": "parcial" if parcial else "completa",
+        "atualizados_nesta_execucao": sorted(novos),
+        "ultima_atualizacao_completa": (antigo_meta.get("ultima_atualizacao_completa") if parcial
+                                        else agora.isoformat(timespec="seconds")),
+        "total_universo": len(todos),
         "total_radar": len(resumos),
         "sem_dividendos_recentes": sem_dividendos,
         "erros": erros,
@@ -152,7 +219,8 @@ def main(argv=None):
                         stream=sys.stdout)
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
     meta = executar(Path(a.saida), a.tickers.split(",") if a.tickers else None, a.limite)
-    print(f"\nConcluído: {meta['total_radar']} no radar, {len(meta['sem_dividendos_recentes'])} sem "
+    print(f"\nConcluído ({meta['tipo_atualizacao']}): {len(meta['atualizados_nesta_execucao'])} "
+          f"atualizadas, {meta['total_radar']} no radar, {len(meta['sem_dividendos_recentes'])} sem "
           f"dividendos recentes, {len(meta['erros'])} erros, {meta['duracao_segundos']} s.")
     for e in meta["erros"]:
         print(f"  ERRO {e['ticker']}: {e['erro']}")

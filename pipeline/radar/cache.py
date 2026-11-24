@@ -19,6 +19,9 @@ from .fornecedores import Fornecedor
 
 log = logging.getLogger(__name__)
 
+# aumentar quando o fornecedor passa a devolver campos novos no perfil (força renovação)
+VERSAO_PERFIL = 2
+
 
 def _nome(ticker: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", ticker)
@@ -91,10 +94,12 @@ class Cache:
         if f.exists():
             guardado = json.loads(f.read_text(encoding="utf-8"))
             quando = dt.datetime.fromisoformat(guardado["_obtido_em"])
-            if (agora - quando).total_seconds() < self.horas_perfil * 3600:
+            if (guardado.get("_versao") == VERSAO_PERFIL
+                    and (agora - quando).total_seconds() < self.horas_perfil * 3600):
                 return _datas(guardado)
         perfil = self.f.obter_perfil(ticker)
-        f.write_text(json.dumps({**perfil, "_obtido_em": agora.isoformat()}, default=str), encoding="utf-8")
+        f.write_text(json.dumps({**perfil, "_obtido_em": agora.isoformat(), "_versao": VERSAO_PERFIL},
+                                default=str), encoding="utf-8")
         return perfil
 
 

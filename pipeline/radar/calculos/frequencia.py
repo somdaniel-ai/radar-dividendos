@@ -37,6 +37,37 @@ def marcar_extraordinarios(div: pd.Series, fator: float = 2.0, janela: int = 8) 
     return pd.Series(marcas, index=div.index, dtype=bool)
 
 
+def marcar_excesso_no_ano(div: pd.Series, pagamentos_ano: int, mediana_intervalo: float | None,
+                          fracao: float = 0.6) -> pd.Series:
+    """Num ano com mais pagamentos do que a frequência normal, marca os pagamentos a mais.
+
+    Os "a mais" são os que chegam fora do ritmo: dois pagamentos com um intervalo menor
+    do que `fracao` × intervalo normal. Desse par, marca-se o que tem o valor mais
+    diferente do habitual (o extra pode vir antes ou depois do normal). Um pagamento
+    que só escorregou de dezembro para janeiro (intervalo normal) não é marcado.
+    """
+    marcas = pd.Series(False, index=div.index, dtype=bool)
+    if pagamentos_ano <= 0 or not mediana_intervalo or len(div) < 2:
+        return marcas
+    valores = list(div.values)
+    habitual = statistics.median(valores)
+    curtos = [i for i in range(1, len(valores))
+              if (div.index[i] - div.index[i - 1]).days < fracao * mediana_intervalo]
+    contagem = div.groupby(div.index.year).size().to_dict()
+    curtos.sort(key=lambda i: (div.index[i] - div.index[i - 1]).days)
+    for i in curtos:
+        ano = div.index[i].year
+        ja = int(marcas[div.index.year == ano].sum())
+        if contagem[ano] - pagamentos_ano - ja <= 0:
+            continue
+        a, b = i - 1, i
+        alvo = a if abs(valores[a] - habitual) > abs(valores[b] - habitual) else b
+        if div.index[alvo].year != ano or marcas.iloc[alvo]:
+            alvo = b
+        marcas.iloc[alvo] = True
+    return marcas
+
+
 def intervalos_dias(div: pd.Series) -> list[int]:
     datas = list(div.index)
     return [(b - a).days for a, b in zip(datas, datas[1:]) if (b - a).days > 0]

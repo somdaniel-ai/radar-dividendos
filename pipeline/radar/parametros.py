@@ -25,6 +25,10 @@ PARAMETROS_PADRAO: dict = {
         "fator_extraordinario": 2.0,  # dividendo > 2x a mediana recente = extraordinário
         "janela_extraordinario": 8,  # nº de pagamentos vizinhos usados na mediana
         "excluir_extraordinarios": True,  # excluir do rendimento normal e da consistência
+        # num ano com mais pagamentos do que a frequência normal, os pagamentos a mais
+        # (os que chegam "fora do ritmo", antes do tempo) contam como extraordinários
+        "extra_por_contagem": True,
+        "fracao_intervalo_fora_ritmo": 0.6,  # intervalo < 60% do normal = fora do ritmo
     },
     # 6.2 Rendimento e impostos
     "rendimento": {
@@ -82,6 +86,9 @@ PARAMETROS_PADRAO: dict = {
         "armadilha_yield_acima_maximo": True,
         "armadilha_payout": True,
         "armadilha_payout_limite": 1.0,
+        # nos REIT, BDC, fundos fechados e ETF o payout sobre o lucro contabilístico
+        # passa muitas vezes de 100% sem ser um problema: ignorar nestas categorias
+        "armadilha_payout_ignorar_categorias": ["REIT", "BDC", "CEF", "ETF"],
         "armadilha_queda_preco": True,
         "armadilha_queda_limite": 0.30,
         "armadilha_atraso": True,

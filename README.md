@@ -63,7 +63,7 @@ Dentro da pasta `pipeline`:
 | O que quer fazer | Comando |
 |---|---|
 | Atualizar os dados de todas as ações (15–20 min na 1.ª vez, depois mais rápido) | `.venv\Scripts\python -m radar.gerar` |
-| Atualizar só algumas ações | `.venv\Scripts\python -m radar.gerar --tickers KO.US,NOS.PT` |
+| Atualizar só algumas ações (as restantes ficam no radar como estavam) | `.venv\Scripts\python -m radar.gerar --tickers KO.US,NOS.PT` |
 | Correr os testes automáticos dos cálculos | `.venv\Scripts\python -m pytest` |
 | Recriar a lista de ações a partir do Excel antigo e do extrato da XTB | `.venv\Scripts\python ferramentas\importar_excel.py` |
 | Comparar os resultados com o Excel (grava em `privado/comparacao_excel.md`) | `.venv\Scripts\python ferramentas\comparar_excel.py` |
@@ -73,14 +73,40 @@ Dentro da pasta `pipeline`:
 - `pipeline/universo/universo_xtb.csv`: as ações a analisar. Colunas: `ticker_xtb` (ex.: `KO.US`), `nome`, `tipo` (`ACAO`, `ETF` ou `FUNDO`), `ativo` (`sim`/`nao`) e, opcionalmente, `ticker_yahoo`, para forçar um símbolo do Yahoo.
 - `pipeline/universo/sufixos.csv`: a conversão dos sufixos da XTB para os do Yahoo (ex.: `.UK` → `.L`, `.PT` → `.LS`).
 - `pipeline/universo/descobertos.csv`: símbolos que o pipeline encontrou sozinho pela pesquisa no Yahoo, guardados para não repetir a pesquisa.
+- `pipeline/universo/extraordinarios.csv`: dividendos extraordinários pagos **no mesmo dia** que o normal. O Yahoo junta os dois num só valor, por isso nenhuma regra automática os consegue separar. Exemplo: a NOS pagou em 2023 0,278 € normal + 0,152 € extra = 0,43 €. Colunas: `ticker_xtb`, `data` (data ex-dividendo), `valor_extraordinario`, `nota`.
 
-> **Ações canadianas** (Telus, Enbridge, TD…): na XTB estão na bolsa de Nova Iorque (ex.: `TU.US`). Os dados vêm de Toronto (`T.TO`), porque é lá que o dividendo é declarado em CAD. Assim o preço e o dividendo ficam na mesma moeda.
+> **Ações canadianas** (Telus, Enbridge, TD…): na XTB estão na bolsa de Nova Iorque (ex.: `TU.US`). O **rendimento** é calculado com os dados de Toronto (`T.TO`), porque é lá que o dividendo é declarado em CAD; assim o preço e o dividendo ficam na mesma moeda. A **carteira** é avaliada pela cotação da linha que tem na XTB (ex.: TU.US em USD), que vem no campo `cotacao_xtb` de cada ação.
+
+### Atualização parcial e falhas
+
+- `--tickers` só atualiza as ações pedidas; as outras ficam no radar tal como estavam.
+- Se o Yahoo falhar numa ação, fica a versão anterior, marcada como `desatualizado`. A ação não desaparece do radar.
+- `data/meta.json` indica se a última execução foi completa ou parcial, quais as ações atualizadas e a data da última atualização completa.
+
+### Categorias
+
+Cada ação recebe uma `categoria`, detetada pela descrição do Yahoo:
+
+| Categoria | O que é |
+|---|---|
+| `EMPRESA` | Empresa normal |
+| `REIT` | Imobiliário |
+| `BDC` | Empresa de crédito a outras empresas |
+| `CEF` | Fundo fechado |
+| `ETF` | Fundo cotado |
+
+- Para forçar uma categoria, escreva `REIT`, `BDC`, `CEF` ou `ETF` na coluna `tipo` de `universo_xtb.csv`.
+- Os **fundos fechados (CEF)** mostram um aviso: a distribuição pode incluir **devolução de capital**, ou seja, parte do que recebe pode ser o seu próprio dinheiro devolvido, e não rendimento.
 
 ### Como os cálculos funcionam (resumo)
 
 Os valores entre parênteses são os valores por defeito. Todos podem ser alterados em `pipeline/radar/parametros.py` e, a partir da Fase 2, nas Definições da app.
 
-- **Frequência:** usa a mediana dos últimos 6 intervalos entre pagamentos. Um dividendo maior do que 2× os vizinhos conta como **extraordinário** e fica fora do rendimento "normal".
+- **Frequência:** usa a mediana dos últimos 6 intervalos entre pagamentos.
+- **Extraordinários** (ficam fora do rendimento "normal" e da consistência):
+  - um dividendo maior do que 2× os vizinhos;
+  - num ano com mais pagamentos do que o normal, o pagamento a mais que chega fora do ritmo;
+  - os que estão registados em `extraordinarios.csv`.
 - **Dividendo anual:** último dividendo normal × pagamentos por ano, como no Excel. Também é mostrado o total dos últimos 12 meses (TTM).
 - **Yield:** bruto = dividendo anual ÷ preço; líquido = bruto × (1 − imposto) (imposto 30%).
 - **Impostos, modo avançado:** retenção no país de origem + imposto em Portugal, com desconto da retenção até ao limite da convenção. Exemplo para os EUA: com W-8BEN, 15% + 13% = 28%; sem W-8BEN, 30% + 13% = 43%. **Estas taxas devem ser confirmadas por si.**
@@ -103,6 +129,7 @@ Os valores entre parênteses são os valores por defeito. Todos podem ser altera
   - 35% consistência;
   - 15% preço atrativo (abaixo do preço justo e perto do mínimo de 52 semanas);
   - −15 pontos por cada sinal de "armadilha": yield líquido acima de 20%, payout acima de 100%, queda do preço de mais de 30% em 12 meses, ou dividendo atrasado.
+  - O sinal de payout **não conta** para REIT, BDC, fundos fechados e ETF. Nestes casos o lucro contabilístico não mostra o dinheiro que têm para distribuir. Esta regra pode ser alterada nas Definições.
 
 ## Segurança
 

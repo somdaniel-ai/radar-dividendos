@@ -43,6 +43,20 @@ def guardar_descoberto(ticker_xtb: str, ticker_yahoo: str, pasta: Path = PASTA) 
                  ["ticker_xtb", "ticker_yahoo", "data"])
 
 
+def ler_extraordinarios(pasta: Path = PASTA) -> dict[str, dict[str, float]]:
+    """Extras declarados à mão (`extraordinarios.csv`): {ticker_xtb: {data: valor_extra}}.
+
+    Serve para os casos em que a empresa paga o dividendo normal e um extra no mesmo
+    dia e o Yahoo junta os dois num só valor (ex.: NOS em 2023)."""
+    out: dict[str, dict[str, float]] = {}
+    for r in ler_csv(pasta / "extraordinarios.csv"):
+        try:
+            out.setdefault(r["ticker_xtb"].upper(), {})[r["data"]] = float(r["valor_extraordinario"].replace(",", "."))
+        except (KeyError, ValueError):
+            log.warning("Linha inválida em extraordinarios.csv: %s", r)
+    return out
+
+
 def converter(ticker_xtb: str, sufixos: dict[str, str], descobertos: dict[str, str] | None = None) -> str | None:
     """CABO.US → CABO; ABDN.UK → ABDN.L; NOS.PT → NOS.LS. None se o sufixo for desconhecido."""
     if descobertos and ticker_xtb in descobertos:
@@ -73,5 +87,8 @@ def ler_universo(pasta: Path = PASTA, so_ativos: bool = True) -> list[dict]:
             continue
         yahoo = r.get("ticker_yahoo") or converter(t, sufixos, descobertos)
         out.append({"ticker_xtb": t, "nome": r.get("nome", ""), "tipo": (r.get("tipo") or "ACAO").upper(),
-                    "ticker_yahoo": yahoo})
+                    "ticker_yahoo": yahoo,
+                    # símbolo Yahoo da linha que existe na XTB (ex.: TU.US → TU); só é diferente
+                    # de ticker_yahoo quando os dados vêm de outra bolsa (ex.: T.TO)
+                    "ticker_yahoo_xtb": converter(t, sufixos) if r.get("ticker_yahoo") else yahoo})
     return out

@@ -92,6 +92,7 @@ class Yahoo(Fornecedor):
             "payout": info.get("payoutRatio"),
             "proxima_ex": _data(info.get("exDividendDate")),
             "data_pagamento": _data(info.get("dividendDate")),
+            "descricao": (info.get("longBusinessSummary") or "")[:1200] or None,
         }
 
     def obter_cambio(self, moeda):
