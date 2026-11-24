@@ -9,7 +9,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | Fase | Descrição | Estado |
 |---|---|---|
 | 0 | Preparação (ferramentas, pastas, repositório) | ✅ concluída |
-| 1 | Motor de dados (pipeline) com a lista inicial | ⏳ por fazer |
+| 1 | Motor de dados (pipeline) com a lista inicial | ✅ concluída |
 | 2 | App: Radar, página da ação e Definições | ⏳ |
 | 3 | Universo completo da XTB | ⏳ |
 | 4 | Supabase: login e carteira | ⏳ |
@@ -33,6 +33,76 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 - Node.js (versão LTS)
 - Python 3.12
 - GitHub CLI (`gh`)
+
+## Motor de dados (pipeline)
+
+O pipeline vai buscar ao Yahoo Finance os preços, os dividendos e o perfil de cada ação da lista, faz todos os cálculos e grava ficheiros na pasta `data/`:
+
+| Ficheiro | Conteúdo |
+|---|---|
+| `data/radar.json` | Resumo de todas as ações que pagaram dividendos nos últimos 24 meses, ordenadas pela pontuação |
+| `data/acoes/<TICKER>.json` | Detalhe de cada ação: histórico de dividendos, valores por ano, preços para gráficos |
+| `data/cambios.json` | Câmbios para EUR |
+| `data/meta.json` | Data/hora da atualização, ações sem dividendos recentes e erros |
+| `data/definicoes_padrao.json` | Valores por defeito de todos os parâmetros ⚙️ |
+
+### Primeira instalação (só uma vez)
+
+Abra um terminal no VS Code (**Terminal → Novo Terminal**) e escreva:
+
+```
+cd pipeline
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+### Utilização
+
+Dentro da pasta `pipeline`:
+
+| O que quer fazer | Comando |
+|---|---|
+| Atualizar os dados de todas as ações (15–20 min na 1.ª vez, depois mais rápido) | `.venv\Scripts\python -m radar.gerar` |
+| Atualizar só algumas ações | `.venv\Scripts\python -m radar.gerar --tickers KO.US,NOS.PT` |
+| Correr os testes automáticos dos cálculos | `.venv\Scripts\python -m pytest` |
+| Recriar a lista de ações a partir do Excel antigo e do extrato da XTB | `.venv\Scripts\python ferramentas\importar_excel.py` |
+| Comparar os resultados com o Excel (grava em `privado/comparacao_excel.md`) | `.venv\Scripts\python ferramentas\comparar_excel.py` |
+
+### Lista de ações e símbolos
+
+- `pipeline/universo/universo_xtb.csv`: as ações a analisar. Colunas: `ticker_xtb` (ex.: `KO.US`), `nome`, `tipo` (`ACAO`, `ETF` ou `FUNDO`), `ativo` (`sim`/`nao`) e, opcionalmente, `ticker_yahoo`, para forçar um símbolo do Yahoo.
+- `pipeline/universo/sufixos.csv`: a conversão dos sufixos da XTB para os do Yahoo (ex.: `.UK` → `.L`, `.PT` → `.LS`).
+- `pipeline/universo/descobertos.csv`: símbolos que o pipeline encontrou sozinho pela pesquisa no Yahoo, guardados para não repetir a pesquisa.
+
+> **Ações canadianas** (Telus, Enbridge, TD…): na XTB estão na bolsa de Nova Iorque (ex.: `TU.US`). Os dados vêm de Toronto (`T.TO`), porque é lá que o dividendo é declarado em CAD. Assim o preço e o dividendo ficam na mesma moeda.
+
+### Como os cálculos funcionam (resumo)
+
+Os valores entre parênteses são os valores por defeito. Todos podem ser alterados em `pipeline/radar/parametros.py` e, a partir da Fase 2, nas Definições da app.
+
+- **Frequência:** usa a mediana dos últimos 6 intervalos entre pagamentos. Um dividendo maior do que 2× os vizinhos conta como **extraordinário** e fica fora do rendimento "normal".
+- **Dividendo anual:** último dividendo normal × pagamentos por ano, como no Excel. Também é mostrado o total dos últimos 12 meses (TTM).
+- **Yield:** bruto = dividendo anual ÷ preço; líquido = bruto × (1 − imposto) (imposto 30%).
+- **Impostos, modo avançado:** retenção no país de origem + imposto em Portugal, com desconto da retenção até ao limite da convenção. Exemplo para os EUA: com W-8BEN, 15% + 13% = 28%; sem W-8BEN, 30% + 13% = 43%. **Estas taxas devem ser confirmadas por si.**
+- **Preço justo:** dividendo anual ÷ yield alvo (6%).
+- **Atraso:** se o pagamento esperado passou há mais de 30 dias e não há nova data anunciada, a ação é marcada **"Possivelmente suspenso"**.
+- **Consistência:** contada por anos civis completos (o ano corrente não conta). Um ano conta como **corte** se o dividendo anual descer mais de 10%. Um pagamento que só passou de dezembro para janeiro não conta como corte.
+- **Níveis de cor:**
+
+  | Nível | Cor | Regra |
+  |---|---|---|
+  | 6 | Dourado escuro | ≥ 10 anos sem cortes e aumento em ≥ 8 dos últimos 10 anos (ou ≥ 5 anos seguidos de aumento) |
+  | 5 | Dourado claro | ≥ 10 anos sem cortes |
+  | 4 | Verde escuro | 5–9 anos sem cortes |
+  | 3 | Verde médio | 3–4 anos sem cortes e nenhum corte nos últimos 5 anos |
+  | 2 | Verde claro | menos de 3 anos sem cortes, ou 1 corte nos últimos 5 anos |
+  | 1 | Verde muito claro | pagamentos irregulares, 2 ou mais cortes em 5 anos, ou menos de 4 pagamentos |
+  | — | Alerta | possivelmente suspenso ou dados em falta |
+- **Pontuação (0–100):**
+  - 50% rendimento (yield líquido entre 3% e 20%);
+  - 35% consistência;
+  - 15% preço atrativo (abaixo do preço justo e perto do mínimo de 52 semanas);
+  - −15 pontos por cada sinal de "armadilha": yield líquido acima de 20%, payout acima de 100%, queda do preço de mais de 30% em 12 meses, ou dividendo atrasado.
 
 ## Segurança
 
