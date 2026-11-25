@@ -1,13 +1,15 @@
 import {
   createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type SortingState,
 } from '@tanstack/react-table'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Carregando, Cartao, Erro, Estrela, EtiquetaCategoria, IconesSinais, NOMES_CATEGORIA,
 } from '../componentes/Comuns'
+import { EscolherColunas } from '../componentes/Colunas'
 import { EtiquetaNivel, Legenda } from '../componentes/Nivel'
 import { gravar, ler } from '../lib/armazenamento'
+import { useColunas } from '../lib/colunas'
 import type { AcaoCalculada } from '../lib/calculos'
 import { useApp } from '../lib/contexto'
 import { dias, euros, pct } from '../lib/formato'
@@ -67,8 +69,8 @@ const col = createColumnHelper<AcaoCalculada>()
 
 // colunas fixas à esquerda na tabela do PC (estrela e nome da ação); a da ação tem uma linha de separação
 const FIXAS: Record<string, string> = {
-  fav: 'left-0 w-10 min-w-10 max-w-10',
-  acao: 'left-10 shadow-[1px_0_0_0_rgb(226_232_240)] dark:shadow-[1px_0_0_0_rgb(30_41_59)]',
+  fav: 'left-0 w-9 min-w-9 max-w-9',
+  acao: 'left-9 shadow-[1px_0_0_0_rgb(226_232_240)] dark:shadow-[1px_0_0_0_rgb(30_41_59)]',
 }
 const fixa = (id: string) => FIXAS[id] ?? ''
 const POR_PAGINA = 100
@@ -82,6 +84,8 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
   const [ordem, setOrdem] = useState<SortingState>(() => ler(`${chave}.ordem`, [{ id: 'pontos', desc: true }]))
   const [verFiltros, setVerFiltros] = useState(false)
   const [verLegenda, setVerLegenda] = useState(false)
+  const [verColunas, setVerColunas] = useState(false)
+  const colunasVisiveis = useColunas()
   const navegar = useNavigate()
 
   useEffect(() => gravar(chave, f), [chave, f])
@@ -129,12 +133,12 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
         const a = c.row.original
         return (
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1">
               <span className="font-semibold">{a.ticker}</span>
               <EtiquetaCategoria categoria={a.categoria} />
               {notas[a.ticker] && <span title={notas[a.ticker]} aria-label="Tem nota">📝</span>}
             </div>
-            <div className="max-w-[16rem] truncate text-xs text-slate-500">{a.nome}</div>
+            <div className="min-w-[8rem] max-w-[15rem] text-xs leading-snug text-slate-500">{a.nome}</div>
           </div>
         )
       },
@@ -174,17 +178,37 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
   ], [favoritos, alternarFavorito, notas, params])
 
   const tabela = useReactTable({
-    data: filtradas, columns: colunas, state: { sorting: ordem }, onSortingChange: setOrdem,
+    data: filtradas, columns: colunas, state: { sorting: ordem, columnVisibility: colunasVisiveis.visiveis },
+    onSortingChange: setOrdem,
     getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(),
+  })
+
+  // com milhares de ações, desenha-se 100 de cada vez (a página fica rápida também no telemóvel).
+  // Atenção: todos os "hooks" (useState, useEffect…) têm de vir ANTES dos "return" de baixo.
+  const [mostrar, setMostrar] = useState(POR_PAGINA)
+  useEffect(() => setMostrar(POR_PAGINA), [f, ordem])
+
+  // A tabela usa o scroll normal da página (títulos presos debaixo da barra do topo).
+  // Só se a janela for estreita demais para a tabela é que passa a ter scroll para o lado
+  // (numa caixa própria, com os títulos e o nome da ação fixos).
+  const caixaTabela = useRef<HTMLDivElement>(null)
+  const [estreita, setEstreita] = useState(false)
+  useLayoutEffect(() => {
+    const caixa = caixaTabela.current
+    const tab = caixa?.querySelector('table')
+    if (!caixa || !tab || typeof ResizeObserver === 'undefined') return
+    const medir = () => setEstreita(tab.offsetWidth > caixa.clientWidth + 1)
+    medir()
+    const ro = new ResizeObserver(medir)
+    ro.observe(caixa)
+    ro.observe(tab)
+    return () => ro.disconnect()
   })
 
   if (erro) return <Erro texto={erro} />
   if (aCarregar || !params) return <Carregando />
 
   const todasLinhas = tabela.getRowModel().rows
-  // com milhares de ações, desenha-se 100 de cada vez (a página fica rápida também no telemóvel)
-  const [mostrar, setMostrar] = useState(POR_PAGINA)
-  useEffect(() => setMostrar(POR_PAGINA), [f, ordem])
   const linhas = todasLinhas.slice(0, mostrar)
   const ativos = Object.entries(f).filter(([k, v]) =>
     k !== 'texto' && k !== 'categoria' && JSON.stringify(v) !== JSON.stringify(padraoFiltros[k as keyof Filtros])).length
@@ -226,6 +250,11 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
             aria-expanded={verFiltros}>
             Filtros{ativos ? ` (${ativos})` : ''}
           </button>
+          <button type="button" onClick={() => setVerColunas(v => !v)}
+            className="hidden shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium md:block dark:border-slate-700 dark:bg-slate-900"
+            aria-expanded={verColunas}>
+            Colunas
+          </button>
         </div>
         <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0" role="tablist" aria-label="Categoria">
           {CATEGORIAS.map(c => {
@@ -247,6 +276,14 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
           </p>
         )}
       </div>
+
+      {verColunas && (
+        <Cartao titulo="Colunas da tabela" className="hidden md:block"
+          acao={<button type="button" className="text-sm text-sky-700 underline dark:text-sky-400" onClick={() => setVerColunas(false)}>Fechar</button>}>
+          <EscolherColunas {...colunasVisiveis} />
+          <p className="mt-2 text-xs text-slate-500">Fica guardado (também pode mudar em Definições → Colunas do Radar).</p>
+        </Cartao>
+      )}
 
       {verFiltros && (
         <Cartao titulo="Filtros" acao={<button type="button" className="text-sm text-sky-700 underline dark:text-sky-400"
@@ -367,8 +404,8 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
       </ul>
 
       {/* tabela (PC) */}
-      {/* a tabela tem o seu próprio scroll: os títulos ficam fixos no topo e a 1.ª coluna (ação) à esquerda */}
-      <div data-tabela-radar className="hidden max-h-[calc(100dvh-5.5rem)] overflow-auto rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 md:block dark:bg-slate-900 dark:ring-slate-800">
+      <div ref={caixaTabela} data-tabela-radar data-estreita={estreita || undefined}
+        className={`hidden rounded-2xl ${estreita ? 'max-h-[calc(100dvh-var(--altura-topo,4rem)-1rem)] overflow-auto' : ''} bg-white shadow-sm ring-1 ring-slate-200 md:block dark:bg-slate-900 dark:ring-slate-800`}>
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
             {tabela.getHeaderGroups().map(g => (
@@ -376,10 +413,10 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
                 {g.headers.map(h => {
                   const s = h.column.getIsSorted()
                   return (
-                    <th key={h.id} className={`sticky top-0 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800 ${fixa(h.column.id) ? `${fixa(h.column.id)} z-30` : 'z-20'}`}
+                    <th key={h.id} className={`sticky ${estreita ? 'top-0' : 'top-(--altura-topo,4rem)'} border-b border-slate-200 bg-slate-50 px-2 py-2 align-bottom leading-tight first:rounded-tl-2xl last:rounded-tr-2xl dark:border-slate-700 dark:bg-slate-800 ${fixa(h.column.id) ? `${fixa(h.column.id)} z-[12]` : 'z-[11]'}`}
                       aria-sort={s === 'asc' ? 'ascending' : s === 'desc' ? 'descending' : undefined}>
                       {h.column.getCanSort() ? (
-                        <button type="button" onClick={h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 uppercase hover:text-slate-900 dark:hover:text-white">
+                        <button type="button" onClick={h.column.getToggleSortingHandler()} className="inline-flex items-end gap-1 text-left uppercase hover:text-slate-900 dark:hover:text-white">
                           {flexRender(h.column.columnDef.header, h.getContext())}
                           <span aria-hidden>{s === 'asc' ? '▲' : s === 'desc' ? '▼' : ''}</span>
                         </button>
@@ -395,7 +432,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
               <tr key={r.id} onClick={() => navegar(`/acao/${r.original.ticker}`)}
                 className="group cursor-pointer">
                 {r.getVisibleCells().map(c => (
-                  <td key={c.id} className={`whitespace-nowrap border-b border-slate-100 px-3 py-2 group-hover:bg-sky-50 dark:border-slate-800 dark:group-hover:bg-slate-800 ${fixa(c.column.id) ? `sticky z-10 bg-white dark:bg-slate-900 ${fixa(c.column.id)}` : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>
+                  <td key={c.id} className={`border-b border-slate-100 px-2 py-2 group-hover:bg-sky-50 dark:border-slate-800 dark:group-hover:bg-slate-800 ${c.column.id === 'acao' ? '' : 'whitespace-nowrap'} ${fixa(c.column.id) ? `sticky z-10 bg-white dark:bg-slate-900 ${fixa(c.column.id)}` : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>
                 ))}
               </tr>
             ))}

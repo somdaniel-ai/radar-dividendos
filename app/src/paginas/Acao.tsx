@@ -59,6 +59,41 @@ export function Acao() {
   return <VistaAcao dados={dados} />
 }
 
+const BOLSAS: Record<string, string> = {
+  US: 'EUA', UK: 'Londres', DE: 'Alemanha', FR: 'Paris', NL: 'Amesterdão', IT: 'Milão', ES: 'Madrid',
+  BE: 'Bruxelas', PT: 'Lisboa', PL: 'Varsóvia', CH: 'Suíça', DK: 'Copenhaga', SE: 'Estocolmo', NO: 'Oslo',
+  FI: 'Helsínquia', CZ: 'Praga', IL: 'Telavive',
+}
+
+/** A mesma empresa (mesmo ISIN) noutras bolsas/moedas da XTB; assinala a versão em euros. */
+function VersoesXtb({ versoes, atual }: { versoes: { ticker: string; moeda: string }[]; atual: string }) {
+  const temEur = versoes.some(v => v.moeda === 'EUR')
+  return (
+    <div className="mt-3 rounded-xl p-3 text-sm ring-1 ring-slate-200 dark:ring-slate-800">
+      <p className="font-medium">Versões na XTB ({versoes.length}, a mesma empresa: mesmo ISIN)</p>
+      <ul className="mt-2 space-y-1">
+        {versoes.map(v => (
+          <li key={v.ticker} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <b>{v.ticker}</b>
+            <span className="text-slate-500">{BOLSAS[v.ticker.split('.').pop() ?? ''] ?? ''} · {v.moeda}</span>
+            {v.moeda === 'EUR' && (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100">
+                € em euros: sem conversão na compra e venda
+              </span>
+            )}
+            {v.ticker === atual && <span className="text-xs text-slate-500">(a analisada aqui)</span>}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-slate-500">
+        {temEur
+          ? 'A sua conta é em euros: comprar e vender a versão em EUR evita a comissão de conversão de moeda da XTB. É a mesma empresa (mesmo ISIN), mas atenção: numa bolsa secundária o dividendo pode continuar a ser pago na moeda de origem (e convertido), e costuma haver menos volume (diferença maior entre preço de compra e de venda).'
+          : 'Não há versão em euros: na compra, na venda e nos dividendos há conversão de moeda (com comissão da XTB).'}
+      </p>
+    </div>
+  )
+}
+
 export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
   const { params, hoje, favoritos, alternarFavorito, notas, gravarNota } = useApp()
   const [vistaPreco, setVistaPreco] = useState<'5a' | 'sempre'>('5a')
@@ -147,6 +182,7 @@ export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
             Rendimento calculado com os dados de <b>{a.ticker_yahoo}</b> ({m}), onde o dividendo é declarado. Na XTB esta ação é <b>{a.ticker}</b>, cotada a {moeda(a.cotacao_xtb.preco, a.cotacao_xtb.moeda)} ({euros(a.cotacao_xtb.preco_eur)}) — é esta cotação que conta para a carteira.
           </p>
         )}
+        {dados.versoes_xtb && dados.versoes_xtb.length > 1 && <VersoesXtb versoes={dados.versoes_xtb} atual={a.ticker} />}
       </Cartao>
 
       {(a.armadilhas.length > 0 || a.avisos.length > 0 || a.fora_batentes) && (

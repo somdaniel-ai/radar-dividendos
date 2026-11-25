@@ -6,6 +6,8 @@ import { UniversoCartao } from '../componentes/UniversoCartao'
 import { useApp, type Tema } from '../lib/contexto'
 import { numero } from '../lib/formato'
 import type { ImpostoPais, Parametros } from '../tipos'
+import { EscolherColunas } from '../componentes/Colunas'
+import { useColunas } from '../lib/colunas'
 
 type Tipo = 'pct' | 'num' | 'bool' | 'select'
 
@@ -158,6 +160,7 @@ function SoLeitura({ rotulo, valor }: { rotulo: string; valor: string }) {
 export function Definicoes() {
   const { params, padrao, aCarregar, erro, repor, personalizado, tema, setTema } = useApp()
   const { hash } = useLocation()
+  const colunas = useColunas()
   useEffect(() => {
     if (!aCarregar && hash) setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth' }), 50)
   }, [hash, aCarregar])
@@ -187,6 +190,10 @@ export function Definicoes() {
               className={`rounded-full px-3 py-1 text-sm ${tema === k ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'ring-1 ring-slate-300 dark:ring-slate-700'}`}>{t}</button>
           ))}
         </div>
+      </Cartao>
+
+      <Cartao titulo={<span id="colunas">Colunas do Radar (PC)</span>}>
+        <EscolherColunas {...colunas} />
       </Cartao>
 
       <Cartao titulo="Rendimento e impostos">

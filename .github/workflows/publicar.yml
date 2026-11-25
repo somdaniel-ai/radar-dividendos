@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: write # para apagar cópias antigas da cache (ver passo "Arrumar a cache")
   pages: write
   id-token: write
 
@@ -43,7 +44,10 @@ jobs:
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
 
+      # A cópia local dos dados (preços, triagem, traduções…) NÃO vai para o Git: fica na cache
+      # do GitHub Actions, que não tem histórico (só se guardam as 3 cópias mais recentes).
       - name: Recuperar a cópia local dos dados (cache)
+        id: dados
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -51,6 +55,15 @@ jobs:
             data
           key: dados-${{ github.run_id }}
           restore-keys: dados-
+
+      # Se a cache se perdeu (o GitHub apaga caches sem uso há 7 dias), vai buscar ao site
+      # publicado o radar, as páginas das ações, as traduções e o estado da triagem.
+      - name: Sem cache — recuperar dados do site publicado
+        if: steps.dados.outputs.cache-matched-key == ''
+        working-directory: pipeline
+        run: |
+          pip install -q requests
+          python -m ferramentas.recuperar_publicado "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" || echo "Nada publicado ainda: começa do zero"
 
       - name: Recuperar o modelo de tradução (cache)
         id: modelo
@@ -108,6 +121,13 @@ jobs:
             data
           key: dados-${{ github.run_id }}
 
+      - name: Arrumar a cache (fica só com as 3 cópias de dados mais recentes)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --key dados- --sort created_at --order desc --limit 100             --json id --jq '.[3:][].id' | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY" || true
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -121,6 +141,12 @@ jobs:
           npm run dados
           npm test
           npm run build
+
+      # abre a app construída num browser a sério (Chrome do GitHub) e falha se alguma página
+      # não abrir, tiver erros na consola ou a tabela do Radar precisar de scroll para o lado
+      - name: Verificar a app num browser
+        working-directory: app
+        run: npm run verificar
 
       - uses: actions/upload-pages-artifact@v3
         with:

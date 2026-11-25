@@ -40,10 +40,10 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 
 | Página | O que tem |
 |---|---|
-| **Radar** | Todas as ações com dividendos, ordenadas pela pontuação. No PC aparece uma tabela (clique no título de uma coluna para ordenar); os títulos das colunas e o nome da ação ficam sempre visíveis ao deslizar. No telemóvel aparecem cartões, com "Ordenar por". Mostra 100 de cada vez (botões "Mostrar mais" e "Mostrar todas"). Tem pesquisa, separadores por categoria (Empresas, REIT, BDC, Fundos fechados) e filtros: setor, país, moeda, frequência, nível de cor, yield, payout, só abaixo do preço justo, esconder armadilhas e esconder fora dos limites de yield. |
-| **Página da ação** | Todas as métricas e os dois preços justos, com a frase "hoje rende X%, quando costuma render Y%". Gráfico dos dividendos **por ano** ou **por pagamento** (5 anos / 10 anos / tudo): normais a azul, extraordinários a laranja, aumentos a verde e cortes a vermelho; ao tocar num ponto vê a data, o valor e a variação. Também tem o gráfico do preço, a explicação do nível de cor e da pontuação, as próximas datas, os possíveis extraordinários, a descrição da empresa (tradução automática, com "ver original") e as suas notas. |
+| **Radar** | Todas as ações com dividendos, ordenadas pela pontuação. No PC aparece uma tabela que ocupa a largura do ecrã (clique no título de uma coluna para ordenar). Ao descer a página, os títulos das colunas ficam presos debaixo da barra do topo. O botão **Colunas** escolhe as colunas visíveis (por defeito ficam escondidas Yield bruto, Frequência e Pos. 52s). Só numa janela muito estreita aparece scroll para o lado, com o nome da ação sempre fixo. No telemóvel aparecem cartões, com "Ordenar por". Mostra 100 de cada vez (botões "Mostrar mais" e "Mostrar todas"). Tem pesquisa, separadores por categoria (Empresas, REIT, BDC, Fundos fechados) e filtros: setor, país, moeda, frequência, nível de cor, yield, payout, só abaixo do preço justo, esconder armadilhas e esconder fora dos limites de yield. |
+| **Página da ação** | Todas as métricas e os dois preços justos, com a frase "hoje rende X%, quando costuma render Y%". Gráfico dos dividendos **por ano** ou **por pagamento** (5 anos / 10 anos / tudo): normais a azul, extraordinários a laranja, aumentos a verde e cortes a vermelho; ao tocar num ponto vê a data, o valor e a variação. Também tem o gráfico do preço, a explicação do nível de cor e da pontuação, as próximas datas, os possíveis extraordinários, a descrição da empresa (tradução automática, com "ver original") e as suas notas. Se a mesma empresa existir na XTB em várias bolsas ou moedas (mesmo ISIN), mostra todas as versões, com a versão **em EUR** assinalada (evita a comissão de conversão de moeda). |
 | **Favoritos** | As ações marcadas com ☆. |
-| **Definições** | Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". Cartão **Universo**: quantos instrumentos o motor acompanha e um espaço para colar ou importar uma lista de símbolos (ex.: da XTB) — mostra o estado de cada um, junta-os aos favoritos e copia os que faltam. |
+| **Definições** | Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". **Colunas do Radar** (as mesmas do botão Colunas). Cartão **Universo**: quantos instrumentos o motor acompanha e um espaço para colar ou importar uma lista de símbolos (ex.: da XTB) — mostra o estado de cada um, junta-os aos favoritos e copia os que faltam. |
 | **Sobre** | Aviso legal, explicação dos cálculos, legenda das cores e estado da última atualização. |
 
 > Por agora, **favoritos, notas e definições ficam guardados no próprio aparelho** (PC ou iPhone). Na Fase 4 passam para o Supabase e ficam sincronizados.
@@ -81,6 +81,7 @@ Abra o endereço que aparece (normalmente http://localhost:5173/radar-dividendos
 |---|---|
 | `npm test` | Testes da app, incluindo o teste de paridade: confirma que as fórmulas da app dão os mesmos resultados que o pipeline, para 33 ações reais e 5 conjuntos de Definições |
 | `npm run build` | Constrói a versão final da app na pasta `app/dist` |
+| `npm run verificar` | Depois do `build`: abre a app num **browser a sério** (o Edge do PC, ou o Chrome no GitHub) e confirma que todas as páginas abrem sem erros, que a tabela do Radar cabe em ecrãs de 1366 e 1920 px sem scroll para o lado e que os títulos ficam presos. Guarda capturas de ecrã em `app/verificacao/` (não vai para o Git). |
 | `npm run icones` | Volta a gerar os ícones a partir de `public/icone.svg` |
 
 ### Publicação automática
@@ -96,7 +97,28 @@ Quando corre:
 - quando há alterações ao código (atualização curta, de 20 minutos, só para publicar);
 - à mão: no GitHub, separador **Actions** → **Publicar app** → **Run workflow** (pode indicar quantos minutos).
 
-A cópia local dos dados (cache) é guardada mesmo que algum passo falhe, para a noite seguinte continuar onde parou.
+Antes de publicar, a tarefa corre os testes e a verificação num browser (`npm run verificar`). Se alguma página não abrir, **não publica**, e a versão anterior continua no ar.
+
+Se uma página da app falhar no seu aparelho, aparece uma mensagem em português ("Ups, esta página teve um problema"), com os botões "Tentar outra vez" e "Recarregar a app", em vez de um ecrã em branco. O menu continua a funcionar.
+
+#### Onde fica a cópia local dos dados
+
+A cópia local dos dados tem os preços, a triagem, as traduções e a lista da XTB: são `pipeline/cache/` e `data/`, com ~200–300 MB quando o universo estiver completo.
+- **Nunca vai para o Git:** as duas pastas estão no `.gitignore`. Assim, o repositório não cresce todas as noites.
+- **Fica na cache do GitHub Actions**, que não tem histórico. Cada execução guarda uma cópia nova; no fim, o passo "Arrumar a cache" apaga as antigas e ficam só as 3 mais recentes.
+- **É guardada mesmo que algum passo falhe**, para a noite seguinte continuar onde parou.
+- **Limites do GitHub (grátis):** até 10 GB de cache por repositório. Uma cache que não seja usada durante 7 dias é apagada automaticamente.
+
+**Se a cache for apagada** (ex.: as atualizações pararam mais de 7 dias):
+1. Na noite seguinte, a tarefa vai buscar ao **site publicado** o radar, as páginas das ações, as traduções e o estado de cada instrumento (`data/universo.json`). O script é `pipeline/ferramentas/recuperar_publicado.py`.
+2. A triagem é reconstruída a partir daí. Quem estava sem dividendos não volta a ser verificado antes dos 60 dias.
+3. O radar continua visível, com as ações marcadas como desatualizadas até serem atualizadas.
+4. Só os **preços históricos** voltam a ser descarregados: as ~3 000 ações do radar levam 1 a 2 noites.
+5. O modelo de tradução volta a ser preparado sozinho (~10 minutos).
+
+Não se perde nada que não se recupere sozinho. Os seus favoritos, notas e definições estão no aparelho e não dependem disto.
+
+> **Atenção:** num repositório público sem alterações durante **60 dias**, o GitHub desliga as tarefas agendadas e envia um email a avisar. Para voltar a ligar: separador **Actions** → **Publicar app** → **Enable workflow**.
 
 ## Motor de dados (pipeline)
 
@@ -139,12 +161,14 @@ Dentro da pasta `pipeline`:
 
 O universo junta duas listas:
 1. **A lista oficial da XTB**: o PDF público "Tabela de especificações – Instrumentos do mercado organizado (OMI)", com ações e ETF reais (não CFD). O `robots.txt` do site não proíbe este ficheiro. Para não sobrecarregar o site, é descarregado **no máximo uma vez por semana**; se falhar, usa-se a última cópia. Código: `pipeline/radar/xtb.py`.
+   - **Termos da XTB** (lidos em novembro de 2026): o "Disclaimer do Website" só diz que a informação do site não é uma recomendação de investimento. O Regulamento de clientes (ponto 5.22) proíbe redistribuir ou descarregar **dados de mercado da Plataforma de Negociação** (preços e dados fundamentais, que são de terceiros). O PDF público da lista de instrumentos não é a plataforma e não tem preços. A app também não publica o PDF: só a lista de símbolos e nomes. Os preços vêm do Yahoo, não da XTB.
 2. **A lista manual** (`pipeline/universo/universo_xtb.csv`). É esta que manda: os símbolos forçados mantêm-se, e uma linha com `ativo=nao` tira um instrumento do radar mesmo que esteja na lista da XTB.
 
 Regras (código em `pipeline/radar/universo.py`):
 - entram **ações** (incluindo REIT, BDC e fundos fechados) e **ETF de distribuição**, e também os ETF sem indicação;
 - ficam de fora os **ETF de acumulação** e os **ETC/ETN**, que não pagam dividendos;
 - a mesma empresa ou fundo (mesmo ISIN) entra **uma só vez**: na bolsa "de casa" no caso das ações, na linha em euros no caso dos ETF;
+- as outras linhas da XTB com o mesmo ISIN (outras bolsas/moedas, ou o símbolo antigo da empresa) ficam guardadas como **versões** e aparecem na página da ação, com a versão em EUR em primeiro;
 - **ações canadianas em Nova Iorque**: dividendos de Toronto (`.TO`) e cotação da linha da XTB. Se não existir em Toronto, usa-se a de Nova Iorque.
 
 ### Triagem e atualização noturna

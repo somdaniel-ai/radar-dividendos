@@ -73,3 +73,16 @@ def test_juntar_universo(tmp_path):
     assert resumo["excluidos"]["outra_bolsa"] == 1  # VHYL.UK (a VHYD.DE está em euros)
     assert resumo["excluidos"]["na_lista_manual"] == 3  # KO.US, KOF.DE (mesmo ISIN) e 01C.PL (desligada)
     assert resumo["total"] == len(itens) == 3
+
+
+def test_versoes_da_mesma_empresa(tmp_path):
+    (tmp_path / "sufixos.csv").write_text(
+        "sufixo_xtb,sufixo_yahoo,pais\n.US,,EUA\n.UK,.L,RU\n.DE,.DE,DE\n.PL,.WA,PL\n", encoding="utf-8")
+    (tmp_path / "universo_xtb.csv").write_text(
+        "ticker_xtb,nome,tipo,ativo,ticker_yahoo\nKO.US,Coca-Cola,ACAO,sim,\n", encoding="utf-8")
+    itens, _ = uni.universo_completo(tmp_path, xtb.ler_linhas(LINHAS))
+    por = {i["ticker_xtb"]: i for i in itens}
+    # KO.US (lista manual, sem ISIN) encontra a KOF.DE pelo ISIN da lista da XTB; EUR primeiro, sem repetidos
+    assert [(v["ticker"], v["moeda"]) for v in por["KO.US"]["versoes_xtb"]] == [("KOF.DE", "EUR"), ("KO.US", "USD")]
+    assert [v["ticker"] for v in por["VHYD.DE"]["versoes_xtb"]] == ["VHYD.DE", "VHYL.UK"]
+    assert "versoes_xtb" not in por["ENB.US"]  # só existe uma versão

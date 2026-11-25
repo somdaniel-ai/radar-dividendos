@@ -150,6 +150,8 @@ export interface AcaoDetalhe extends Acao {
   descricao_servico: string | null
   historico_dividendos: { data: string; valor: number; extraordinario: boolean; parte_extraordinaria: number }[]
   precos: { semanal: [string, number][]; mensal: [string, number][] }
+  /** a mesma empresa/fundo noutras bolsas ou moedas da XTB (mesmo ISIN); EUR primeiro */
+  versoes_xtb?: { ticker: string; moeda: string; nome: string }[]
 }
 
 export interface Meta {

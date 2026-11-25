@@ -39,10 +39,22 @@ describe('páginas', () => {
     const html = desenhar(<Radar />)
     const titulos = html.match(/<th [^>]*>/g) ?? []
     expect(titulos.length).toBeGreaterThan(5)
-    expect(titulos.every(t => /sticky top-0/.test(t))).toBe(true)
+    // presos debaixo da barra do topo, com o scroll normal da página (sem caixa de scroll própria)
+    expect(titulos.every(t => /sticky top-\(--altura-topo/.test(t))).toBe(true)
+    expect(html).not.toMatch(/data-tabela-radar[^>]*overflow-auto/)
     expect(titulos.filter(t => /left-/.test(t)).length).toBe(2) // estrela + ação
-    expect(html).toMatch(/<td class="[^"]*sticky[^"]*left-10/)
+    expect(html).toMatch(/<td class="[^"]*sticky[^"]*left-9/)
     expect(html).toContain('aria-sort="descending"') // continua ordenado por pontos
+    // nomes por extenso (podem passar a 2 linhas, nunca cortados)
+    expect(html).not.toMatch(/<table[\s\S]*truncate[\s\S]*<\/table>/)
+  })
+  it('Radar (PC): colunas secundárias escondidas por defeito, botão Colunas', () => {
+    const html = desenhar(<Radar />)
+    const tabela = html.slice(html.indexOf('<table'), html.indexOf('</thead>'))
+    expect(tabela).toContain('Yield líq.')
+    expect(tabela).not.toContain('Yield bruto')
+    expect(tabela).not.toContain('Pos. 52s')
+    expect(html).toContain('>Colunas</button>')
   })
   it('Favoritos', () => expect(desenhar(<Radar soFavoritos />)).toContain('KO.US'))
   it('Definições', () => {
@@ -70,6 +82,18 @@ describe('páginas', () => {
   it('descrição por traduzir está marcada como inglês', () => {
     const html = desenhar(<VistaAcao dados={{ ...umaAcao, descricao: 'Makes drinks.', descricao_original: 'Makes drinks.', descricao_estado: 'indisponivel' }} />)
     expect(html).toMatch(/lang="en"[^>]*>Makes drinks\./)
+  })
+  it('versões da mesma empresa na XTB, com a versão em EUR assinalada', () => {
+    const limpo = (h: string) => h.replace(/<!-- -->/g, '')
+    const html = limpo(desenhar(<VistaAcao dados={{ ...umaAcao, versoes_xtb: [
+      { ticker: 'KOF.DE', moeda: 'EUR', nome: 'Coca-Cola' }, { ticker: 'KO.US', moeda: 'USD', nome: 'Coca-Cola' }] }} />))
+    expect(html).toContain('Versões na XTB (2, a mesma empresa')
+    expect(html).toMatch(/KOF\.DE<\/b>.*Alemanha · EUR.*em euros/)
+    expect(html).toContain('KO.US</b>')
+    const semEur = desenhar(<VistaAcao dados={{ ...umaAcao, versoes_xtb: [
+      { ticker: 'X.US', moeda: 'USD', nome: 'X' }, { ticker: 'X.UK', moeda: 'GBP', nome: 'X' }] }} />)
+    expect(semEur).toContain('Não há versão em euros')
+    expect(desenhar(<VistaAcao dados={{ ...umaAcao, versoes_xtb: undefined }} />)).not.toContain('Versões na XTB')
   })
   it('descrição traduzida está marcada como pt-PT', () => {
     const html = desenhar(<VistaAcao dados={{ ...umaAcao, descricao: 'Faz bebidas.', descricao_original: 'Makes drinks.', descricao_estado: 'traduzida' }} />)

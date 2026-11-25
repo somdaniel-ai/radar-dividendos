@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { HashRouter, Route, Routes } from 'react-router-dom'
 import { Carregando } from './componentes/Comuns'
 import { Layout } from './componentes/Layout'
+import { RedeSeguranca } from './componentes/RedeSeguranca'
 import { ProvedorApp } from './lib/contexto'
 import { Radar } from './paginas/Radar'
 
@@ -13,6 +14,8 @@ const Sobre = lazy(() => import('./paginas/Sobre').then(m => ({ default: m.Sobre
 // HashRouter (endereços com #/) para funcionar no GitHub Pages sem configuração extra.
 export default function App() {
   return (
+    // rede de segurança exterior: apanha falhas fora das páginas (ex.: no menu)
+    <RedeSeguranca>
     <ProvedorApp>
       <HashRouter>
         <Suspense fallback={<Carregando />}>
@@ -29,5 +32,6 @@ export default function App() {
         </Suspense>
       </HashRouter>
     </ProvedorApp>
+    </RedeSeguranca>
   )
 }

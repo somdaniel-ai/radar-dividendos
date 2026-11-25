@@ -172,5 +172,28 @@ def universo_completo(pasta: Path = PASTA, lista_xtb: list[dict] | None = None) 
             item["ticker_yahoo"] = d["ticker_xtb"].rsplit(".", 1)[0] + ".TO"
             item["alternativa_yahoo"] = yahoo  # se não existir em Toronto, usa-se a de Nova Iorque
         itens.append(item)
+    _juntar_versoes(itens, lista_xtb or [])
     resumo["total"] = len(itens)
     return itens, resumo
+
+
+def _juntar_versoes(itens: list[dict], lista_xtb: list[dict]) -> None:
+    """Todas as linhas da XTB com o mesmo ISIN (a mesma empresa noutra bolsa/moeda), para a
+    página da ação mostrar onde se pode comprar e assinalar a versão em euros (sem comissão de
+    conversão de moeda). Só se guarda quando há mais de uma versão."""
+    por_isin: dict[str, list[dict]] = {}
+    isin_do_ticker = {}
+    for d in lista_xtb:
+        grupo = por_isin.setdefault(d["isin"], [])
+        if all(x["ticker_xtb"] != d["ticker_xtb"] for x in grupo):  # a lista da XTB tem linhas repetidas
+            grupo.append(d)
+        isin_do_ticker[d["ticker_xtb"].upper()] = d["isin"]
+    for i in itens:
+        isin = i.get("isin") or isin_do_ticker.get(i["ticker_xtb"].upper())
+        grupo = por_isin.get(isin or "", [])
+        if len(grupo) < 2:
+            continue
+        i["isin"] = isin
+        i["versoes_xtb"] = sorted(
+            ({"ticker": d["ticker_xtb"], "moeda": d.get("moeda") or "", "nome": d.get("nome") or ""} for d in grupo),
+            key=lambda v: (v["moeda"] != "EUR", v["ticker"] != i["ticker_xtb"], v["ticker"]))

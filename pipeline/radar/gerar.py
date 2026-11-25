@@ -195,6 +195,10 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     pasta_universo = pasta_universo or uni.PASTA
     cache = Cache(pasta_cache or (RAIZ / "pipeline" / "cache"), f)
     triagem = Triagem(cache.pasta)
+    if not triagem.dados:  # cache perdida: recupera a triagem a partir da última versão publicada
+        n = triagem.recuperar(_ler_json(saida / "universo.json", {}))
+        if n:
+            log.warning("Triagem recuperada de data/universo.json (%s instrumentos)", n)
     extras = uni.ler_extraordinarios(pasta_universo)
     rejeitados = uni.ler_rejeitados(pasta_universo)
     termos = Termos()
@@ -267,6 +271,9 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
             fx = f.obter_cambio(perfil.get("moeda"))
             r = analisar(item, precos, div, perfil, fx, hoje, p, extras.get(t),
                          _cotacao_xtb(f, cache, item, agora), rejeitados.get(t))
+            # a mesma empresa noutras bolsas/moedas da XTB (mesmo ISIN), com a versão em EUR primeiro
+            if item.get("versoes_xtb"):
+                r["detalhe"]["versoes_xtb"] = item["versoes_xtb"]
             # nesta fase só se usam traduções já guardadas; as novas são pedidas no fim,
             # pela ordem da pontuação (as ações do topo do radar primeiro)
             desc = trad.descricao(t, perfil.get("descricao"), so_cache=True)

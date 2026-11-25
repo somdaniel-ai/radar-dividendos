@@ -81,6 +81,24 @@ class Triagem:
             out[d.get("estado", "?")] = out.get(d.get("estado", "?"), 0) + 1
         return out
 
+    def recuperar(self, universo: dict) -> int:
+        """Reconstrói a triagem a partir do data/universo.json publicado (se a cache do GitHub
+        se perdeu). Os estados ficam com a data desse ficheiro, por isso a agenda de revisões
+        continua (ex.: quem não paga dividendos só volta a ser visto ao fim de 60 dias)."""
+        try:
+            quando = dt.date.fromisoformat(str(universo.get("gerado_em", ""))[:10])
+        except ValueError:
+            return 0
+        estados = {"radar": "dividendos", "dividendos": "dividendos",
+                   "sem_dividendos": "sem_dividendos", "sem_simbolo": "sem_simbolo"}
+        n = 0
+        for t, i in (universo.get("instrumentos") or {}).items():
+            estado = estados.get(i.get("e"))
+            if estado and t not in self.dados:
+                self.dados[t] = {"estado": estado, "verificado_em": quando.isoformat(), "recuperado": True}
+                n += 1
+        return n
+
     def guardar(self) -> None:
         self.ficheiro.parent.mkdir(parents=True, exist_ok=True)
         self.ficheiro.write_text(json.dumps({"versao": 1, "instrumentos": self.dados}, ensure_ascii=False),

@@ -1,7 +1,9 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useLayoutEffect, useRef } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/contexto'
 import { dataHora } from '../lib/formato'
 import { AVISO_LEGAL } from './Comuns'
+import { RedeSeguranca } from './RedeSeguranca'
 
 const LINKS = [
   { para: '/', texto: 'Radar', icone: '📡' },
@@ -12,9 +14,23 @@ const LINKS = [
 
 export function Layout() {
   const { meta } = useApp()
+  const { pathname } = useLocation()
+  // altura da barra do topo (os títulos da tabela do Radar ficam presos logo abaixo dela)
+  const topo = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const el = topo.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const medir = () => document.documentElement.style.setProperty('--altura-topo', `${el.offsetHeight}px`)
+    medir()
+    const ro = new ResizeObserver(medir)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // o Radar e os Favoritos usam toda a largura do ecrã (a tabela cabe sem scroll para o lado)
+  const largo = pathname === '/' || pathname === '/favoritos'
   return (
     <div className="min-h-dvh text-slate-900 dark:text-slate-100">
-      <header className="topo-seguro sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
+      <header ref={topo} className="topo-seguro sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
           <NavLink to="/" className="flex items-center gap-2 font-bold">
             <span aria-hidden className="text-xl">📡</span>
@@ -38,8 +54,9 @@ export function Layout() {
         </div>
       </header>
 
-      <main className="pb-seguro mx-auto max-w-7xl px-3 pt-3 sm:px-4">
-        <Outlet />
+      <main className={`pb-seguro mx-auto px-3 pt-3 sm:px-4 ${largo ? 'max-w-none' : 'max-w-7xl'}`}>
+        {/* se a página falhar, aparece uma mensagem; o menu continua a funcionar */}
+        <RedeSeguranca chave={pathname}><Outlet /></RedeSeguranca>
         <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500 dark:border-slate-800">
           <p>{AVISO_LEGAL}</p>
           {meta && <p className="mt-1 lg:hidden">Dados atualizados em {dataHora(meta.gerado_em)}</p>}
