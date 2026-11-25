@@ -108,7 +108,7 @@ export function UniversoCartao() {
           {fora.length > 0 && (
             <p className="mt-2 text-xs text-slate-500">
               As que estão fora do universo não constam da lista da XTB (ou estão desligadas). Copie-as e envie-mas para eu as acrescentar
-              à lista manual; na Fase 4 isto passa a ser automático.
+              à lista manual (por agora este passo ainda é à mão).
             </p>
           )}
         </div>

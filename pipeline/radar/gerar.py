@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 
+from . import decisoes as dec
 from . import universo as uni
 from . import xtb
 from .agenda import Triagem
@@ -222,6 +223,13 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     antigo_radar = {a["ticker"]: a for a in _ler_json(saida / "radar.json", {}).get("acoes", [])}
     antigo_meta = _ler_json(saida / "meta.json", {})
 
+    # decisões sobre extraordinários tomadas na app (conta Supabase), juntas às dos CSV
+    conta = dec.ler_da_conta()
+    extras, rejeitados = dec.juntar(extras, rejeitados, conta)
+    antigas = antigo_meta.get("decisoes_conta", {}).get("assinaturas", {})
+    novas_ass = dec.assinaturas(conta) if conta is not None else antigas
+    decisoes_mudaram = dec.mudaram(antigas, novas_ass) & no_universo
+
     if tickers:
         pedidos = {t.upper() for t in tickers}
         itens = [i for i in todos if i["ticker_xtb"] in pedidos]
@@ -231,6 +239,10 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
         itens = todos[:limite]
     else:
         itens = triagem.ordem(todos, hoje, {t: a.get("atualizado_em", "") for t, a in antigo_radar.items()})
+        # ações com decisões novas na app vão à frente (para a mudança aparecer já esta noite)
+        if decisoes_mudaram:
+            frente = [i for i in todos if i["ticker_xtb"] in decisoes_mudaram]
+            itens = frente + [i for i in itens if i["ticker_xtb"] not in decisoes_mudaram]
     agendados = len(itens)
     prazo = None if (tickers or limite) else inicio + (minutos if minutos is not None else _minutos_dados()) * 60
 
@@ -392,6 +404,13 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
                     "sem_dividendos_nesta_execucao": len(sem_dividendos),
                     "estados": triagem.contagem()},
         "erros": erros[-500:],
+        # decisões da conta: quantas foram lidas e o que já foi aplicado (o que ficou por
+        # processar fica com a assinatura antiga, para voltar a ir à frente na próxima vez)
+        "decisoes_conta": {
+            "lidas": conta is not None, "total": len(conta or []),
+            "assinaturas": {t: v for t, v in {**novas_ass, **{t: antigas.get(t) for t in decisoes_mudaram
+                            if t not in processados}}.items() if v is not None},
+        },
         "duracao_segundos": round(time.time() - inicio, 1),
         "aviso": "Ferramenta de apoio pessoal. Não constitui aconselhamento financeiro nem fiscal.",
     }

@@ -67,7 +67,7 @@ function Linha({ s, d, onDecidir, onDesfazer }: {
 
 export function Suspeitos() {
   const { dados, erro, aCarregar } = usePedido(lerSuspeitos, [])
-  const { decisoes, gravarDecisoes } = useApp()
+  const { decisoes, gravarDecisoes, sessao } = useApp()
   const [mostrarDecididos, setMostrarDecididos] = useState(false)
   const [copiado, setCopiado] = useState(false)
   const guardar = gravarDecisoes
@@ -121,10 +121,18 @@ export function Suspeitos() {
         </>
       )}
       <div className="mt-3 rounded-xl bg-sky-50 p-3 text-xs text-sky-950 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-100 dark:ring-sky-900">
-        <p>
-          <b>Como as decisões entram nos cálculos:</b> por agora ficam guardadas neste aparelho. Toque em <b>Copiar decisões</b> e envie-mas
-          (cole na conversa) para eu as gravar no motor de dados. Na Fase 4 passam a ficar no Supabase e o motor lê-as sozinho todas as noites.
-        </p>
+        {sessao ? (
+          <p data-decisoes-conta>
+            <b>Como as decisões entram nos cálculos:</b> ficam guardadas na sua conta e o motor de dados lê-as sozinho todas as noites.
+            As ações com decisões novas são as primeiras a ser recalculadas, por isso a mudança aparece na próxima atualização noturna.
+          </p>
+        ) : (
+          <p data-decisoes-conta>
+            <b>Como as decisões entram nos cálculos:</b> sem sessão iniciada ficam só neste aparelho e o motor de dados não as vê.
+            {' '}<Link to="/definicoes#conta" className="font-medium underline">Entre com o GitHub</Link> para o motor as ler sozinho
+            todas as noites. Em alternativa, copie-as para as gravar à mão nos ficheiros do motor.
+          </p>
+        )}
         <button type="button" disabled={!nDecisoes} onClick={copiar}
           className="mt-2 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-slate-900">
           {copiado ? 'Copiado ✓' : `Copiar decisões (${nDecisoes})`}

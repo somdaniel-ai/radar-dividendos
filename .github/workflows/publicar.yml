@@ -48,6 +48,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/publicar.yml/enable" && echo "Tarefa mantida ativa"
 
+      # O plano gratuito do Supabase pausa projetos sem atividade durante 1 semana. Todas as
+      # noites chama-se a função ping() (só devolve "ok", não lê dados de ninguém), com a
+      # chave publicável, que é pública. Se falhar, não impede o resto.
+      - name: Manter o Supabase acordado
+        continue-on-error: true
+        run: |
+          curl -fsS -X POST "https://mimdxffecbctnzhskjwh.supabase.co/rest/v1/rpc/ping"             -H "apikey: sb_publishable_UiTkJf1X_KLJgVceus7S5A_9d-RK3sy" -H "Content-Type: application/json" -d '{}'             && echo " ← Supabase acordado"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -118,6 +126,9 @@ jobs:
           # tradução das descrições: modelo aberto OPUS-MT, aqui mesmo (sem contas nem chaves)
           RADAR_TRADUTOR: opus
           RADAR_TRADUCAO_MINUTOS: ${{ github.event_name == 'push' && '5' || '25' }}
+          # decisões sobre extraordinários tomadas na app: a "chave do motor" só dá acesso à
+          # função decisoes_motor (ver supabase/migracoes/0002). Sem o segredo, usa só os CSV.
+          SUPABASE_CHAVE_MOTOR: ${{ secrets.SUPABASE_CHAVE_MOTOR }}
           # Alternativa desligada — Microsoft Azure (precisa de conta e dos segredos):
           # RADAR_TRADUTOR: azure
           # AZURE_TRANSLATOR_KEY: ${{ secrets.AZURE_TRANSLATOR_KEY }}

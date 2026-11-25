@@ -16,3 +16,4 @@ def _sem_rede_nem_tradutor(monkeypatch):
     monkeypatch.delenv("RADAR_LISTA_XTB", raising=False)  # nunca descarrega a lista da XTB
     monkeypatch.delenv("RADAR_MINUTOS_DADOS", raising=False)
     monkeypatch.delenv("RADAR_EXECUCAO", raising=False)
+    monkeypatch.delenv("SUPABASE_CHAVE_MOTOR", raising=False)  # nunca fala com o Supabase

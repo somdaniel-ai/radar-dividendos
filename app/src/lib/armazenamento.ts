@@ -1,5 +1,5 @@
 // Guarda pequenas coisas neste aparelho (localStorage).
-// Na Fase 4, favoritos, notas e definições passam para o Supabase (sincronizados).
+// Com sessão iniciada, favoritos, notas, definições, carteira e decisões são sincronizados com o Supabase (ver contexto.tsx).
 
 export function ler<T>(chave: string, padrao: T): T {
   try {

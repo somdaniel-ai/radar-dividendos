@@ -12,7 +12,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | 1 | Motor de dados (pipeline) com a lista inicial | ✅ concluída |
 | 2 | App: Radar, página da ação e Definições | ✅ concluída |
 | 3 | Universo completo da XTB | ✅ concluída |
-| 4 | Supabase: login e carteira | ⏳ |
+| 4 | Supabase: login e carteira | ✅ concluída |
 | 5 | Simulador, Meta de rendimento e Projeção | ⏳ |
 | 6 | Calendário, Alertas (Telegram) e "Atualizar agora" | ⏳ |
 | 7 | Afinações | ⏳ |
@@ -23,6 +23,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 |---|---|
 | `pipeline/` | O "motor de dados" em Python: descarrega preços e dividendos (Yahoo Finance), faz os cálculos e gera os ficheiros de dados que a app lê. |
 | `pipeline/universo/` | Lista de ações a analisar (`universo_xtb.csv`) e tabela de conversão de símbolos XTB → Yahoo (`sufixos.csv`). Pode ser editada à mão. |
+| `supabase/migracoes/` | Os comandos SQL que criam as tabelas da conta no Supabase (só a estrutura; nunca dados). |
 | `app/` | A aplicação web (o que se vê no browser/iPhone), feita em React. |
 | `.github/workflows/` | Tarefas automáticas do GitHub (ex.: atualizar os dados todas as noites). |
 | `privado/` | Os seus ficheiros pessoais (Excel, extratos da XTB). **Nunca é enviada para o GitHub** — está bloqueada no `.gitignore`. |
@@ -43,12 +44,32 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | **Radar** | Todas as ações com dividendos, ordenadas pela pontuação. No PC aparece uma tabela que ocupa a largura do ecrã (clique no título de uma coluna para ordenar). Ao descer a página, os títulos das colunas ficam presos debaixo da barra do topo. O botão **Colunas** escolhe as colunas visíveis (por defeito ficam escondidas Yield bruto, Frequência e Pos. 52s). Só numa janela muito estreita aparece scroll para o lado, com o nome da ação sempre fixo. No telemóvel aparecem cartões, com "Ordenar por". Mostra 100 de cada vez (botões "Mostrar mais" e "Mostrar todas"). Tem pesquisa, separadores por categoria (Empresas, REIT, BDC, Fundos fechados) e filtros: setor, país, moeda, frequência, nível de cor, yield, payout, só abaixo do preço justo, esconder armadilhas e esconder fora dos limites de yield. |
 | **Página da ação** | Todas as métricas e os dois preços justos, com a frase "hoje rende X%, quando costuma render Y%". Gráfico dos dividendos **por ano** ou **por pagamento** (5 anos / 10 anos / tudo): normais a azul, extraordinários a laranja, aumentos a verde e cortes a vermelho; ao tocar num ponto vê a data, o valor e a variação. Também tem o gráfico do preço, a explicação do nível de cor e da pontuação, as próximas datas, os possíveis extraordinários, a descrição da empresa (tradução automática, com "ver original") e as suas notas. Se a mesma empresa existir na XTB em várias bolsas ou moedas (mesmo ISIN), mostra todas as versões, com a versão **em EUR** assinalada (evita a comissão de conversão de moeda). |
 | **Favoritos** | As ações marcadas com ☆. |
-| **Definições** | Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". **Colunas do Radar** (as mesmas do botão Colunas). Cartão **Universo**: quantos instrumentos o motor acompanha e um espaço para colar ou importar uma lista de símbolos (ex.: da XTB) — mostra o estado de cada um, junta-os aos favoritos e copia os que faltam. |
+| **Carteira** 💼 | As suas posições, importadas do extrato da XTB (ou compras escritas à mão): quantidade, preço médio e lotes de cada ação, dividendos **reais** recebidos (por mês, por ano e por ação) comparados com o previsto, aviso quando a retenção na fonte é maior do que devia (ex.: 30% nos EUA sem o W-8BEN, em vez de 15%) e a diversificação por setor, país, moeda e categoria. No Radar, as ações que já tem aparecem com 💼. |
+| **Definições** | Cartão **Conta** (entrar com o GitHub e estado da sincronização). Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". **Colunas do Radar** (as mesmas do botão Colunas). Cartão **Universo**: quantos instrumentos o motor acompanha e um espaço para colar ou importar uma lista de símbolos (ex.: da XTB) — mostra o estado de cada um, junta-os aos favoritos e copia os que faltam. |
 | **Sobre** | Aviso legal, explicação dos cálculos, legenda das cores e estado da última atualização. |
 
-> Por agora, **favoritos, notas e definições ficam guardados no próprio aparelho** (PC ou iPhone). Na Fase 4 passam para o Supabase e ficam sincronizados.
+### Conta e sincronização (Supabase)
+
+Sem sessão iniciada, tudo fica **só no aparelho**. Com o botão **Entrar** (login com o GitHub), a carteira, os favoritos, as notas, as definições, as colunas do Radar e as decisões sobre extraordinários ficam guardados na sua conta e aparecem iguais no PC e no iPhone.
+
+- **Primeiro login num aparelho:** junta o que está no aparelho com o que está na conta, sem perder nada (se a mesma coisa existir nos dois lados, ganha a conta).
+- **Depois disso**, cada alteração vai logo para a conta. Ao voltar à app, lê-se a versão da conta.
+- **Sem rede:** as alterações ficam guardadas no aparelho e são enviadas quando a ligação voltar (o ícone mostra ⚠️ enquanto houver alterações por enviar).
+- **Sair** apaga a cópia deste aparelho; os dados continuam na conta.
+- Os dados estão no Supabase (UE, Irlanda). Cada tabela tem **RLS** (cada conta só vê as suas linhas) e a criação de contas novas está **desligada**: só a sua conta existe.
+
+### Importar o extrato da XTB
+
+1. Na XTB (xStation): **Histórico da conta** → exportar para Excel (`.xlsx`), com o período todo.
+2. Na app: **Carteira** → **Importar extrato da XTB** → escolher o ficheiro.
+3. A app mostra uma pré-visualização: quantas operações reconheceu e se as posições calculadas **batem certo** com a folha `Open Positions` do extrato. Só grava se confirmar.
+4. Pode importar outra vez mais tarde: operações repetidas não são duplicadas (cada uma tem o ID da XTB).
+
+O ficheiro é lido **só no browser**: não é enviado para lado nenhum, e o número de conta nunca é lido. Só as operações (compras, vendas, dividendos, retenções…) vão para a sua conta.
 
 ### Instalar no iPhone
+
+> Se já tinha a app instalada e quer usar a conta: abra a app → **Definições** → **Entrar com GitHub** (ver "Entrar no iPhone" abaixo).
 
 1. Abra o **Safari**. Tem de ser o Safari, não o Chrome.
 2. Vá a https://somdaniel-ai.github.io/radar-dividendos/
@@ -56,6 +77,14 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 4. Deslize a lista para baixo e toque em **"Adicionar ao ecrã principal"**.
 5. Confirme o nome ("Dividendos") e toque em **Adicionar**.
 6. A app aparece no ecrã principal com o ícone do radar e abre em ecrã inteiro, como uma app normal.
+
+#### Entrar no iPhone
+
+1. Abra a app a partir do ícone no ecrã principal.
+2. Toque em **Definições** (barra de baixo) → cartão **Conta** → **Entrar com GitHub**.
+3. Abre-se a página do GitHub: entre com o seu utilizador e palavra-passe (e o código de verificação, se tiver). Se pedir, toque em **Authorize**.
+4. Volta sozinho à app, com "Sessão iniciada como …" e "☁️ Sincronizado". A carteira, os favoritos e as definições do PC aparecem.
+5. Se não voltar à app com a sessão iniciada (por exemplo, se a página acabar no **Safari**), feche essa página, abra a app pelo ícone e repita o passo 2: o GitHub já se lembra de si, por isso costuma bastar um toque.
 
 ### Instalar no PC (Chrome ou Edge)
 
@@ -123,6 +152,10 @@ Não se perde nada que não se recupere sozinho. Os seus favoritos, notas e defi
 Num repositório público sem alterações durante **60 dias**, o GitHub desliga as tarefas agendadas. Como os dados não vão para o Git, isto podia acontecer. Por isso, a cada execução, o primeiro passo ("Manter a atualização noturna ativa") volta a ativar a tarefa pela API do GitHub (`PUT …/actions/workflows/publicar.yml/enable`). Isso conta como atividade e reinicia o contador. **Não há commits automáticos** e o histórico do repositório não cresce.
 
 Se mesmo assim a tarefa for desligada (o GitHub envia um email a avisar), basta ir ao separador **Actions** → **Publicar app** → **Enable workflow**.
+
+#### O Supabase nunca adormece
+
+O plano gratuito do Supabase pausa projetos sem atividade durante uma semana. Todas as noites, a atualização chama a função `ping()` do Supabase (só devolve "ok", não lê dados de ninguém), o que conta como atividade. Se o Supabase estiver em baixo, o resto da atualização continua.
 
 #### Aviso de falhas
 
@@ -214,8 +247,10 @@ O pipeline assinala automaticamente pagamentos que parecem extraordinários. Os 
 Funciona assim:
 1. Os pagamentos assinalados aparecem com ❓ e numa lista nas **Definições**, onde pode confirmar cada um (indicando a parte extra) ou rejeitá-lo.
 2. Enquanto não decidir, contam como normais.
-3. As decisões ficam no aparelho. O botão **Copiar decisões** gera as linhas para `extraordinarios.csv` (confirmados) e `extraordinarios_rejeitados.csv` (rejeitados).
-4. Na Fase 4 as decisões passam para o Supabase e o pipeline lê-as sozinho.
+3. Com sessão iniciada, as decisões ficam na conta e o pipeline **lê-as sozinho todas as noites**. As ações com decisões novas são as primeiras a ser recalculadas.
+4. Sem sessão, ficam só no aparelho. O botão **Copiar decisões** gera as linhas para `extraordinarios.csv` (confirmados) e `extraordinarios_rejeitados.csv` (rejeitados), que também continuam a ser lidos. Se a mesma data estiver nos dois lados, ganha a decisão da conta.
+
+**Como o pipeline lê as decisões com o mínimo de acesso:** não usa a chave secreta do Supabase (que daria acesso a tudo, incluindo a carteira). Usa a chave publicável (pública) e uma **chave do motor**, guardada nos Secrets do GitHub como `SUPABASE_CHAVE_MOTOR`. Essa chave só serve para chamar a função `decisoes_motor`, que devolve apenas ticker, data, decisão e parte extra (ver `supabase/migracoes/0002_motor_decisoes.sql`). No Supabase fica só a "impressão digital" (SHA-256) da chave. Para trocar a chave: no SQL Editor, `select privado.nova_chave_motor();` e copiar o resultado para o segredo do GitHub (a antiga deixa de funcionar). Sem o segredo, o pipeline usa só os ficheiros CSV.
 
 A lista completa fica em `data/extraordinarios_suspeitos.json`.
 
@@ -295,3 +330,8 @@ Os valores entre parênteses são os valores por defeito. Todos podem ser altera
 ## Segurança
 
 O repositório é **público**. Dados pessoais, chaves e tokens nunca são guardados no código: ficam na pasta `privado/` (ignorada pelo Git) ou nos "segredos" do GitHub/Supabase.
+
+- No código só está a **chave publicável** do Supabase (`sb_publishable_…`), que foi feita para ser pública: sozinha não dá acesso a nenhuma tabela (o papel "anon" não tem permissões e todas as tabelas têm RLS).
+- A chave secreta do Supabase, a palavra-passe da base de dados e o "client secret" do GitHub **não** são usados pela app nem pelo pipeline.
+- O único segredo do pipeline ligado ao Supabase é `SUPABASE_CHAVE_MOTOR` (só lê as decisões sobre extraordinários).
+- O extrato da XTB nunca é enviado para o GitHub nem para o servidor: é lido no browser.
