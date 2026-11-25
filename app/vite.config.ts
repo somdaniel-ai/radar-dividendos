@@ -52,5 +52,7 @@ export default defineConfig({
   ],
   test: {
     environment: 'node',
+    // o 1.º teste de cada ficheiro também paga o carregamento dos módulos (lento neste PC)
+    testTimeout: 30000,
   },
 })

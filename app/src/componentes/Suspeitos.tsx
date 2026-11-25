@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { gravar, ler } from '../lib/armazenamento'
+import { useApp } from '../lib/contexto'
+import type { Decisao } from '../lib/sincronizar'
 import { lerSuspeitos, usePedido } from '../lib/dados'
 import { data, moeda, numero } from '../lib/formato'
 import type { SuspeitoLista } from '../tipos'
 import { Cartao } from './Comuns'
 
-type Decisao = { decisao: 'confirmar' | 'rejeitar'; valor_extra: number; em: string }
-const CHAVE = 'radar.extraordinarios.decisoes'
 const chave = (s: SuspeitoLista) => `${s.ticker}|${s.data}`
 
 /** Linhas para acrescentar aos ficheiros do pipeline (enquanto não há Supabase). */
@@ -68,10 +67,10 @@ function Linha({ s, d, onDecidir, onDesfazer }: {
 
 export function Suspeitos() {
   const { dados, erro, aCarregar } = usePedido(lerSuspeitos, [])
-  const [decisoes, setDecisoes] = useState<Record<string, Decisao>>(() => ler(CHAVE, {}))
+  const { decisoes, gravarDecisoes } = useApp()
   const [mostrarDecididos, setMostrarDecididos] = useState(false)
   const [copiado, setCopiado] = useState(false)
-  const guardar = (n: Record<string, Decisao>) => { setDecisoes(n); gravar(CHAVE, n) }
+  const guardar = gravarDecisoes
 
   const lista = useMemo(() => dados?.suspeitos ?? [], [dados])
   const pendentes = lista.filter(s => !decisoes[chave(s)])

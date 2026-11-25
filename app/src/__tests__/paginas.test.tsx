@@ -23,6 +23,8 @@ const ctx: Contexto = {
   alterar: () => {}, repor: () => {}, personalizado: false,
   favoritos: new Set(['KO.US']), alternarFavorito: () => {}, notas: { 'KO.US': 'nota' }, gravarNota: () => {},
   tema: 'auto', setTema: () => {}, carteira: [], gravarCarteira: () => {}, naCarteira: new Set(['WU.US']),
+  colunas: {}, gravarColunas: () => {}, decisoes: {}, gravarDecisoes: () => {},
+  sessao: null, sync: { estado: 'local', pendentes: 0 }, entrar: async () => {}, sair: async () => {}, sincronizarAgora: () => {},
 }
 
 const desenhar = (el: React.ReactNode) =>

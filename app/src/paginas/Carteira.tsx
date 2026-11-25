@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Link } from 'react-router-dom'
 import { Carregando, Cartao, Erro } from '../componentes/Comuns'
+import { TextoSync } from '../componentes/Conta'
 import {
   calcularCarteira, diversificacao, juntar, pagamentos, porMes, resumo, verificar, type Diferenca, type Posicao,
 } from '../lib/carteira'
@@ -68,7 +69,7 @@ function Importar({ carteira, gravar }: { carteira: Transacao[]; gravar: (t: Tra
         No site ou na app da XTB: <b>Histórico da conta → Exportar → Excel (.xlsx)</b>, com o período todo.
         Depois escolha o ficheiro aqui. Pode importar o mesmo extrato (ou um mais recente) as vezes que quiser: as operações já importadas são ignoradas.
       </p>
-      <p className="mt-1 text-xs text-slate-500">🔒 O ficheiro é lido neste aparelho e não é enviado para lado nenhum. O número de conta não é guardado.</p>
+      <p className="mt-1 text-xs text-slate-500">🔒 O ficheiro é lido neste aparelho e não é enviado para lado nenhum. O número de conta não é guardado. Só as operações (compras, dividendos…) vão para a sua conta, se tiver sessão iniciada.</p>
       <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800">
         {aLer ? 'A ler…' : 'Escolher ficheiro .xlsx'}
         <input ref={entrada} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -261,7 +262,7 @@ function Diversificacao({ posicoes }: { posicoes: Posicao[] }) {
 // ——— página ———
 
 export function Carteira() {
-  const { aCarregar, erro, acoes, params, carteira, gravarCarteira } = useApp()
+  const { aCarregar, erro, acoes, params, carteira, gravarCarteira, sessao } = useApp()
   const [manual, setManual] = useState(false)
   const posicoes = useMemo(() => calcularCarteira(carteira, acoes, params?.impostos), [carteira, acoes, params])
   const r = useMemo(() => resumo(posicoes, carteira), [posicoes, carteira])
@@ -288,7 +289,7 @@ export function Carteira() {
           <h1 className="text-xl font-bold">Carteira</h1>
           <p className="text-sm text-slate-500">
             {carteira.length ? `${posicoes.length} posições · ${carteira.length} operações importadas` : 'Ainda sem operações.'}
-            {carteira.length ? '.' : ''} Guardado neste aparelho (quando ligarmos o Supabase, fica sincronizado entre o PC e o iPhone).
+            {carteira.length ? '.' : ''} <TextoSync />{!sessao && <> <Link to="/definicoes#conta" className="text-sky-700 underline dark:text-sky-400">Entrar com o GitHub</Link> para a guardar na sua conta.</>}
           </p>
         </div>
         <button type="button" onClick={() => setManual(v => !v)}

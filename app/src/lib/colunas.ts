@@ -1,6 +1,8 @@
-// Colunas visíveis na tabela do Radar (PC). Guardado no browser, como as outras definições.
-import { useCallback, useState } from 'react'
-import { apagar, gravar, ler } from './armazenamento'
+// Colunas visíveis na tabela do Radar (PC). Guardadas com as Definições
+// (no aparelho e, com sessão iniciada, na conta).
+import { useCallback } from 'react'
+import { ler } from './armazenamento'
+import { useApp } from './contexto'
 
 export const COLUNAS_RADAR = [
   { id: 'nivel', nome: 'Nível de consistência', padrao: true },
@@ -16,21 +18,19 @@ export const COLUNAS_RADAR = [
   { id: 'sinais', nome: 'Sinais', padrao: true },
 ] as const
 
-const CHAVE = 'radar.colunas'
+export const CHAVE_COLUNAS = 'radar.colunas'
+
+const padrao = (): Record<string, boolean> => Object.fromEntries(COLUNAS_RADAR.map(c => [c.id, c.padrao]))
 
 export function lerColunas(): Record<string, boolean> {
-  const guardadas = ler<Record<string, boolean>>(CHAVE, {})
-  return Object.fromEntries(COLUNAS_RADAR.map(c => [c.id, guardadas[c.id] ?? c.padrao]))
+  return { ...padrao(), ...ler<Record<string, boolean>>(CHAVE_COLUNAS, {}) }
 }
 
 export function useColunas() {
-  const [visiveis, setVisiveis] = useState(lerColunas)
-  const mudar = useCallback((id: string, ver: boolean) => setVisiveis(v => {
-    const n = { ...v, [id]: ver }
-    gravar(CHAVE, n)
-    return n
-  }), [])
-  const repor = useCallback(() => { apagar(CHAVE); setVisiveis(lerColunas()) }, [])
+  const { colunas, gravarColunas } = useApp()
+  const visiveis = { ...padrao(), ...colunas }
+  const mudar = useCallback((id: string, ver: boolean) => gravarColunas({ ...colunas, [id]: ver }), [colunas, gravarColunas])
+  const repor = useCallback(() => gravarColunas(padrao()), [gravarColunas])
   const personalizadas = COLUNAS_RADAR.some(c => visiveis[c.id] !== c.padrao)
   return { visiveis, mudar, repor, personalizadas }
 }

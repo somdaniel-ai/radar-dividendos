@@ -4,6 +4,7 @@ import { useApp } from '../lib/contexto'
 import { dataHora } from '../lib/formato'
 import { saudeAtualizacao } from '../lib/saude'
 import { AVISO_LEGAL } from './Comuns'
+import { BotaoConta } from './Conta'
 import { RedeSeguranca } from './RedeSeguranca'
 
 const LINKS = [
@@ -49,11 +50,14 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
+          <div className="flex items-center gap-3">
           {meta && (
             <span className="hidden text-xs text-slate-500 lg:block" title="Data/hora da última atualização dos dados">
               Atualizado: {dataHora(meta.gerado_em)}
             </span>
           )}
+            <BotaoConta />
+          </div>
         </div>
       </header>
 

@@ -7,6 +7,7 @@ import { useApp, type Tema } from '../lib/contexto'
 import { numero } from '../lib/formato'
 import type { ImpostoPais, Parametros } from '../tipos'
 import { EscolherColunas } from '../componentes/Colunas'
+import { CartaoConta } from '../componentes/Conta'
 import { useColunas } from '../lib/colunas'
 
 type Tipo = 'pct' | 'num' | 'bool' | 'select'
@@ -174,7 +175,7 @@ export function Definicoes() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold">Definições</h1>
-          <p className="text-sm text-slate-500">As alterações aplicam-se logo a todo o radar. Ficam guardadas neste aparelho (na Fase 4 passam a ser sincronizadas entre PC e iPhone).</p>
+          <p className="text-sm text-slate-500">As alterações aplicam-se logo a todo o radar. Ficam guardadas neste aparelho e, se entrar com o GitHub (cartão Conta), também na sua conta, iguais no PC e no iPhone.</p>
         </div>
         <button type="button" disabled={!personalizado}
           onClick={() => { if (confirm('Repor todos os valores por defeito?')) repor() }}
@@ -182,6 +183,8 @@ export function Definicoes() {
           Repor valores por defeito
         </button>
       </div>
+
+      <CartaoConta />
 
       <Cartao titulo="Aparência">
         <div className="flex flex-wrap gap-2">
