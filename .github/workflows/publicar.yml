@@ -19,7 +19,7 @@ on:
 
 permissions:
   contents: read
-  actions: write # para apagar cópias antigas da cache (ver passo "Arrumar a cache")
+  actions: write # para apagar cópias antigas da cache e manter a tarefa ativa (ver os passos)
   pages: write
   id-token: write
 
@@ -37,6 +37,16 @@ jobs:
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
+
+      # Num repositório público sem commits durante 60 dias, o GitHub desliga as tarefas
+      # agendadas. Como os dados não vão para o Git, o repositório pode ficar parado: por isso,
+      # a cada execução, a tarefa volta a "ativar-se" pela API do GitHub — conta como atividade
+      # e reinicia o contador, sem commits. Se falhar, não impede o resto.
+      - name: Manter a atualização noturna ativa (sem commits)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/publicar.yml/enable" && echo "Tarefa mantida ativa"
 
       - uses: actions/setup-python@v5
         with:
@@ -100,6 +110,9 @@ jobs:
         env:
           # universo: lista manual + lista oficial da XTB (PDF público, renovado 1×/semana)
           RADAR_LISTA_XTB: sim
+          # "noturna" (agendada ou a pedido) conta para o aviso de 3 noites falhadas na app;
+          # "curta" (depois de uma alteração ao código) não conta
+          RADAR_EXECUCAO: ${{ github.event_name == 'push' && 'curta' || 'noturna' }}
           # à noite e a pedido: até 3 h; depois de uma alteração ao código: só 20 min
           RADAR_MINUTOS_DADOS: ${{ github.event_name == 'push' && '20' || inputs.minutos || '180' }}
           # tradução das descrições: modelo aberto OPUS-MT, aqui mesmo (sem contas nem chaves)

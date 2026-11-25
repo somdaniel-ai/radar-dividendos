@@ -2,9 +2,17 @@ import { Cartao, AVISO_LEGAL } from '../componentes/Comuns'
 import { Legenda } from '../componentes/Nivel'
 import { useApp } from '../lib/contexto'
 import { dataHora } from '../lib/formato'
+import { useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { NOITES_PARA_AVISAR, saudeAtualizacao } from '../lib/saude'
 
 export function Sobre() {
   const { meta } = useApp()
+  const saude = saudeAtualizacao(meta)
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (hash) setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth' }), 50)
+  }, [hash])
   return (
     <div className="space-y-3">
       <h1 className="text-xl font-bold">Sobre</h1>
@@ -36,8 +44,15 @@ export function Sobre() {
 
       <Cartao titulo="Cores de consistência"><Legenda /></Cartao>
 
-      <Cartao titulo="Dados">
+      <Cartao titulo={<span id="atualizacao">Dados</span>}>
         <p className="text-sm">Última atualização: <b>{dataHora(meta?.gerado_em)}</b> ({meta?.tipo_atualizacao === 'parcial' ? 'parcial' : 'completa'}).</p>
+        {meta?.ultima_noite_ok && <p className="text-sm">Última atualização noturna bem-sucedida: <b>{dataHora(meta.ultima_noite_ok)}</b>.</p>}
+        <div className={`mt-2 rounded-xl p-3 text-sm ${saude.avisar ? 'bg-red-50 text-red-950 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-100 dark:ring-red-900' : 'bg-slate-50 dark:bg-slate-800/60'}`}>
+          {saude.avisar
+            ? <p><b>⚠️ A atualização noturna falhou nas últimas {saude.noitesFalhadas} noites.</b></p>
+            : <p>A atualização noturna está a funcionar{saude.noitesFalhadas > 0 ? ` (${saude.noitesFalhadas} noite(s) com problemas; o aviso aparece ao fim de ${NOITES_PARA_AVISAR})` : ''}.</p>}
+          <p className="mt-1 text-xs">Se aparecer o aviso: no GitHub, abra o separador <b>Actions</b> → <b>Publicar app</b> e veja a execução com ❌ (o passo a vermelho diz o que falhou). Se a tarefa estiver desligada, carregue em <b>Enable workflow</b>. Para tentar já, use <b>Run workflow</b>.</p>
+        </div>
         {meta && <p className="text-sm">{meta.total_radar.toLocaleString('pt-PT')} ações no radar de {meta.total_universo.toLocaleString('pt-PT')} no universo
           {meta.triagem && meta.triagem.por_processar > 0 && <> ({meta.triagem.por_processar.toLocaleString('pt-PT')} ficaram para a próxima noite)</>}.</p>}
         {meta && meta.erros.length > 0 && (

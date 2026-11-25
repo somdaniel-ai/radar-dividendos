@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/contexto'
 import { dataHora } from '../lib/formato'
+import { saudeAtualizacao } from '../lib/saude'
 import { AVISO_LEGAL } from './Comuns'
 import { RedeSeguranca } from './RedeSeguranca'
 
@@ -28,6 +29,7 @@ export function Layout() {
   }, [])
   // o Radar e os Favoritos usam toda a largura do ecrã (a tabela cabe sem scroll para o lado)
   const largo = pathname === '/' || pathname === '/favoritos'
+  const saude = saudeAtualizacao(meta)
   return (
     <div className="min-h-dvh text-slate-900 dark:text-slate-100">
       <header ref={topo} className="topo-seguro sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
@@ -55,6 +57,14 @@ export function Layout() {
       </header>
 
       <main className={`pb-seguro mx-auto px-3 pt-3 sm:px-4 ${largo ? 'max-w-none' : 'max-w-7xl'}`}>
+        {saude.avisar && (
+          <div role="status" data-aviso-atualizacao
+            className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-950 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-100 dark:ring-red-900">
+            ⚠️ <b>A atualização noturna falhou nas últimas {saude.noitesFalhadas} noites.</b>{' '}
+            Última atualização bem-sucedida: {dataHora(saude.ultimaNoiteOk)}. Os dados podem estar desatualizados.{' '}
+            <Link to="/sobre#atualizacao" className="underline">O que fazer</Link>
+          </div>
+        )}
         {/* se a página falhar, aparece uma mensagem; o menu continua a funcionar */}
         <RedeSeguranca chave={pathname}><Outlet /></RedeSeguranca>
         <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500 dark:border-slate-800">

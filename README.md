@@ -11,7 +11,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | 0 | Preparação (ferramentas, pastas, repositório) | ✅ concluída |
 | 1 | Motor de dados (pipeline) com a lista inicial | ✅ concluída |
 | 2 | App: Radar, página da ação e Definições | ✅ concluída |
-| 3 | Universo completo da XTB | 🔎 em aprovação |
+| 3 | Universo completo da XTB | ✅ concluída |
 | 4 | Supabase: login e carteira | ⏳ |
 | 5 | Simulador, Meta de rendimento e Projeção | ⏳ |
 | 6 | Calendário, Alertas (Telegram) e "Atualizar agora" | ⏳ |
@@ -118,7 +118,19 @@ A cópia local dos dados tem os preços, a triagem, as traduções e a lista da 
 
 Não se perde nada que não se recupere sozinho. Os seus favoritos, notas e definições estão no aparelho e não dependem disto.
 
-> **Atenção:** num repositório público sem alterações durante **60 dias**, o GitHub desliga as tarefas agendadas e envia um email a avisar. Para voltar a ligar: separador **Actions** → **Publicar app** → **Enable workflow**.
+#### A atualização noturna nunca se desliga sozinha
+
+Num repositório público sem alterações durante **60 dias**, o GitHub desliga as tarefas agendadas. Como os dados não vão para o Git, isto podia acontecer. Por isso, a cada execução, o primeiro passo ("Manter a atualização noturna ativa") volta a ativar a tarefa pela API do GitHub (`PUT …/actions/workflows/publicar.yml/enable`). Isso conta como atividade e reinicia o contador. **Não há commits automáticos** e o histórico do repositório não cresce.
+
+Se mesmo assim a tarefa for desligada (o GitHub envia um email a avisar), basta ir ao separador **Actions** → **Publicar app** → **Enable workflow**.
+
+#### Aviso de falhas
+
+Se a atualização noturna falhar **3 noites seguidas**, aparece um aviso vermelho no topo de todas as páginas da app. A página **Sobre** explica o que fazer. Há dois casos:
+- **A noite falhou de todo e não publicou nada:** a app vê que a "última atualização noturna bem-sucedida" (`ultima_noite_ok` em `data/meta.json`) tem mais de 3 dias.
+- **A noite publicou, mas com problemas** (o Yahoo bloqueou ou nada foi processado): o pipeline conta essas noites em `noites_com_problemas`.
+
+As atualizações curtas, feitas depois de uma alteração ao código, não contam. Na Fase 6 o aviso passa a ir também para o Telegram.
 
 ## Motor de dados (pipeline)
 

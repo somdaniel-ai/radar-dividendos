@@ -156,6 +156,9 @@ export interface AcaoDetalhe extends Acao {
 
 export interface Meta {
   gerado_em: string
+  /** última atualização noturna sem problemas (para o aviso de 3 noites falhadas) */
+  ultima_noite_ok?: string | null
+  noites_com_problemas?: number
   data_referencia: string
   tipo_atualizacao: 'completa' | 'parcial'
   ultima_atualizacao_completa: string | null

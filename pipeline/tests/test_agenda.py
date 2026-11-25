@@ -111,3 +111,24 @@ def test_bloqueio_do_yahoo_para_sem_estragar(tmp_path):
     assert set(_radar(saida)) == {"AAA.US", "BBB.US", "CCC.US"}  # o radar fica como estava
     t = json.loads((cache / "triagem.json").read_text(encoding="utf-8"))["instrumentos"]
     assert all(v["estado"] == "dividendos" for v in t.values())  # o bloqueio não muda a triagem
+
+
+def test_saude_da_atualizacao_noturna(tmp_path, monkeypatch):
+    uni = _universo(tmp_path / "universo")
+    saida, cache = tmp_path / "data", tmp_path / "cache"
+    corre = lambda dias, **k: gerar.executar(saida, pasta_cache=cache, pasta_universo=uni,  # noqa: E731
+                                             agora=DIA + dt.timedelta(days=dias), pausa_bloqueio=0, **k)
+    monkeypatch.setenv("RADAR_EXECUCAO", "noturna")
+    meta = corre(0, fornecedor=Fornecedor())
+    assert meta["noites_com_problemas"] == 0 and meta["ultima_noite_ok"].startswith(DIA.date().isoformat())
+    # duas noites seguidas bloqueadas pelo Yahoo: conta 2 e a última noite boa não avança
+    meta = corre(1, fornecedor=Fornecedor(bloquear=True))
+    meta = corre(2, fornecedor=Fornecedor(bloquear=True))
+    assert meta["noites_com_problemas"] == 2 and meta["ultima_noite_ok"].startswith(DIA.date().isoformat())
+    # uma atualização curta (depois de alterar o código) não conta como noite
+    monkeypatch.setenv("RADAR_EXECUCAO", "curta")
+    assert corre(2, fornecedor=Fornecedor())["noites_com_problemas"] == 2
+    # a noite seguinte corre bem: volta a zero
+    monkeypatch.setenv("RADAR_EXECUCAO", "noturna")
+    meta = corre(3, fornecedor=Fornecedor())
+    assert meta["noites_com_problemas"] == 0 and meta["ultima_noite_ok"].startswith((DIA + dt.timedelta(days=3)).date().isoformat())

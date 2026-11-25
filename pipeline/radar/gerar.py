@@ -360,8 +360,22 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
                     | {r["cotacao_xtb"]["moeda"] for r in novos.values() if r.get("cotacao_xtb", {}).get("moeda")}):
         cambios[m] = f.obter_cambio(m)
 
+    # Saúde da atualização noturna (a app avisa ao fim de 3 noites seguidas com problemas).
+    # Uma noite falhada que nem chega a publicar também é detetada pela app: a data da última
+    # noite bem-sucedida deixa de avançar.
+    noturna = (os.environ.get("RADAR_EXECUCAO") or "").strip().lower() == "noturna"
+    ultima_noite_ok = antigo_meta.get("ultima_noite_ok")
+    noites_com_problemas = antigo_meta.get("noites_com_problemas", 0)
+    if noturna:
+        if interrompido == "bloqueio" or (agendados and len(processados) == 0):
+            noites_com_problemas += 1
+        else:
+            noites_com_problemas, ultima_noite_ok = 0, agora.isoformat(timespec="seconds")
+
     meta = {
         "gerado_em": agora.isoformat(timespec="seconds"),
+        "ultima_noite_ok": ultima_noite_ok,
+        "noites_com_problemas": noites_com_problemas,
         "data_referencia": hoje.isoformat(),
         "fornecedor": f.nome,
         "tipo_atualizacao": "completa" if completa else "parcial",
