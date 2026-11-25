@@ -22,7 +22,7 @@ const ctx: Contexto = {
     sem_dividendos_recentes: ['MDV.US'], erros: [], aviso: '' },
   alterar: () => {}, repor: () => {}, personalizado: false,
   favoritos: new Set(['KO.US']), alternarFavorito: () => {}, notas: { 'KO.US': 'nota' }, gravarNota: () => {},
-  tema: 'auto', setTema: () => {},
+  tema: 'auto', setTema: () => {}, carteira: [], gravarCarteira: () => {}, naCarteira: new Set(['WU.US']),
 }
 
 const desenhar = (el: React.ReactNode) =>

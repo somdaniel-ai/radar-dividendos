@@ -9,6 +9,7 @@ import { RedeSeguranca } from './RedeSeguranca'
 const LINKS = [
   { para: '/', texto: 'Radar', icone: '📡' },
   { para: '/favoritos', texto: 'Favoritos', icone: '★' },
+  { para: '/carteira', texto: 'Carteira', icone: '💼' },
   { para: '/definicoes', texto: 'Definições', icone: '⚙️' },
   { para: '/sobre', texto: 'Sobre', icone: 'ℹ️' },
 ]
@@ -75,7 +76,7 @@ export function Layout() {
 
       <nav className="barra-inferior fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-950/95"
         aria-label="Navegação">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {LINKS.map(l => (
             <NavLink key={l.para} to={l.para} end
               className={({ isActive }) => `flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${isActive

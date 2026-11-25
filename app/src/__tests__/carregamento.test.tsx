@@ -29,7 +29,7 @@ const base: Contexto = {
     sem_dividendos_recentes: [], erros: [], aviso: '' },
   alterar: () => {}, repor: () => {}, personalizado: false,
   favoritos: new Set(['KO.US']), alternarFavorito: () => {}, notas: {}, gravarNota: () => {},
-  tema: 'auto', setTema: () => {},
+  tema: 'auto', setTema: () => {}, carteira: [], gravarCarteira: () => {}, naCarteira: new Set(['WU.US']),
 }
 const aCarregar: Contexto = { ...base, aCarregar: true, params: null, padrao: null, acoes: [], meta: null }
 

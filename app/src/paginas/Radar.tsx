@@ -76,7 +76,7 @@ const fixa = (id: string) => FIXAS[id] ?? ''
 const POR_PAGINA = 100
 
 export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
-  const { aCarregar, erro, acoes, params, favoritos, alternarFavorito, notas } = useApp()
+  const { aCarregar, erro, acoes, params, favoritos, alternarFavorito, notas, naCarteira } = useApp()
   const chave = soFavoritos ? 'radar.filtros.favoritos' : 'radar.filtros'
   // nos favoritos mostra-se tudo o que o utilizador escolheu, mesmo fora dos limites de yield
   const padraoFiltros = soFavoritos ? { ...FILTROS_PADRAO, esconderForaBatentes: false } : FILTROS_PADRAO
@@ -136,6 +136,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
             <div className="flex flex-wrap items-center gap-1">
               <span className="font-semibold">{a.ticker}</span>
               <EtiquetaCategoria categoria={a.categoria} />
+              {naCarteira.has(a.ticker) && <span title="Está na sua carteira" aria-label="Na carteira">💼</span>}
               {notas[a.ticker] && <span title={notas[a.ticker]} aria-label="Tem nota">📝</span>}
             </div>
             <div className="min-w-[8rem] max-w-[15rem] text-xs leading-snug text-slate-500">{a.nome}</div>
@@ -175,7 +176,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
       },
     }),
     col.display({ id: 'sinais', header: 'Sinais', cell: c => <IconesSinais sinais={[...c.row.original.armadilhas, ...c.row.original.avisos]} /> }),
-  ], [favoritos, alternarFavorito, notas, params])
+  ], [favoritos, alternarFavorito, notas, params, naCarteira])
 
   const tabela = useReactTable({
     data: filtradas, columns: colunas, state: { sorting: ordem, columnVisibility: colunasVisiveis.visiveis },
@@ -369,6 +370,7 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-semibold">{a.ticker}</span>
+                      {naCarteira.has(a.ticker) && <span title="Está na sua carteira" aria-label="Na carteira">💼</span>}
                       <EtiquetaNivel nivel={a.nivel.nivel} curta />
                       <EtiquetaCategoria categoria={a.categoria} />
                       <IconesSinais sinais={[...a.armadilhas, ...a.avisos]} />

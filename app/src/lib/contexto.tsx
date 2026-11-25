@@ -3,6 +3,7 @@ import type { Acao, Meta, Parametros } from '../tipos'
 import { apagar, gravar, ler } from './armazenamento'
 import { recalcular, type AcaoCalculada } from './calculos'
 import { lerMeta, lerPadrao, lerRadar } from './dados'
+import type { Transacao } from './extrato'
 
 export type Tema = 'auto' | 'claro' | 'escuro'
 
@@ -23,6 +24,11 @@ export interface Contexto {
   gravarNota: (t: string, texto: string) => void
   tema: Tema
   setTema: (t: Tema) => void
+  /** operações da carteira (extrato da XTB + compras manuais) */
+  carteira: Transacao[]
+  gravarCarteira: (t: Transacao[]) => void
+  /** ações que estão na carteira (para a marca 💼 no Radar) */
+  naCarteira: Set<string>
 }
 
 export const ContextoApp = createContext<Contexto | null>(null)
@@ -32,6 +38,7 @@ const K_DEF = 'radar.definicoes'
 const K_FAV = 'radar.favoritos'
 const K_NOT = 'radar.notas'
 const K_TEMA = 'radar.tema'
+const K_CART = 'radar.carteira'
 
 function fundir<T>(base: T, extra: unknown): T {
   if (typeof base !== 'object' || base === null || Array.isArray(base)) return (extra ?? base) as T
@@ -66,6 +73,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
   const [favoritos, setFavoritos] = useState<Set<string>>(() => new Set(ler<string[]>(K_FAV, [])))
   const [notas, setNotas] = useState<Record<string, string>>(() => ler(K_NOT, {}))
   const [tema, setTemaEstado] = useState<Tema>(() => ler<Tema>(K_TEMA, 'auto'))
+  const [carteira, setCarteira] = useState<Transacao[]>(() => ler<Transacao[]>(K_CART, []))
 
   useEffect(() => {
     Promise.all([lerRadar(), lerMeta(), lerPadrao()])
@@ -117,12 +125,22 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     })
   }, [])
   const setTema = useCallback((t: Tema) => { setTemaEstado(t); gravar(K_TEMA, t) }, [])
+  const gravarCarteira = useCallback((t: Transacao[]) => { setCarteira(t); gravar(K_CART, t) }, [])
+  const naCarteira = useMemo(() => {
+    const q: Record<string, number> = {}
+    for (const t of carteira) {
+      if (!t.ticker || t.quantidade == null) continue
+      if (t.tipo === 'compra') q[t.ticker] = (q[t.ticker] ?? 0) + t.quantidade
+      if (t.tipo === 'venda') q[t.ticker] = (q[t.ticker] ?? 0) - t.quantidade
+    }
+    return new Set(Object.keys(q).filter(k => q[k] > 1e-9))
+  }, [carteira])
 
   const valor: Contexto = {
     aCarregar: !erro && (!radar || !params),
     erro, meta, padrao, params, acoes, hoje,
     alterar, repor, personalizado: Object.keys(alteracoes).length > 0,
-    favoritos, alternarFavorito, notas, gravarNota, tema, setTema,
+    favoritos, alternarFavorito, notas, gravarNota, tema, setTema, carteira, gravarCarteira, naCarteira,
   }
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>
 }

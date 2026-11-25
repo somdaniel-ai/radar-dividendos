@@ -29,6 +29,15 @@ export function taxaImposto(pais: string | null, p: Parametros['impostos']) {
   return { taxa: ret + Math.max(0, p.taxa_portugal - credito), retencao: ret, conhecida: true }
 }
 
+/** Retenção na fonte esperada para um país (tabela das Definições), em qualquer modo de impostos.
+ *  Usada no aviso da carteira quando a XTB retém mais do que isto. */
+export function retencaoEsperada(pais: string | null, p: Parametros['impostos']): number | null {
+  if (pais === 'Portugal') return p.taxa_portugal
+  const cfg = p.por_pais[pais ?? '']
+  if (!cfg) return null
+  return p.w8ben_ativo && cfg.retencao_w8ben !== undefined ? cfg.retencao_w8ben : cfg.retencao
+}
+
 export function yields(anualEur: number, precoEur: number | null, taxa: number) {
   if (!precoEur || precoEur <= 0) return { bruto: null, mensal: null, liquido: null }
   const bruto = anualEur / precoEur

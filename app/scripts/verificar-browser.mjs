@@ -6,7 +6,7 @@
 //
 // As capturas de ecrã ficam em app/verificacao/ (não vai para o Git).
 import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 
 const PORTA = Number(process.env.PORTA_VERIFICAR ?? 4391)
@@ -156,6 +156,35 @@ await verificar('definicoes', '#/definicoes', {
   },
 })
 await verificar('sobre', '#/sobre', { espera: 'text=aconselhamento financeiro' })
+await verificar('carteira-vazia', '#/carteira', { espera: 'text=Importar o extrato da XTB' })
+
+// Só no PC do utilizador: importa o extrato real que está em privado/ (no GitHub não existe).
+// As capturas ficam em app/verificacao/ (fora do Git).
+const extrato = existsSync('../privado') && readdirSync('../privado').find(f => /^EUR_.*\.xlsx$/i.test(f))
+if (extrato) {
+  for (const [nome, largura, altura] of [['carteira-importada-pc', 1366, 900], ['carteira-importada-telemovel', 390, 844]]) {
+    await verificar(nome, '#/carteira', {
+      largura, altura, espera: 'text=Importar o extrato da XTB',
+      extra: async (p, erros) => {
+        await p.locator('[data-importar-extrato]').setInputFiles(`../privado/${extrato}`)
+        await p.waitForSelector('[data-previa-importacao]', { timeout: 20000 })
+        if (!(await p.locator('text=batem certo com a folha').count())) erros.push('a verificação contra Open Positions não bateu certo')
+        await p.screenshot({ path: `${PASTA}/${nome}-previa.png` })
+        await p.getByRole('button', { name: /^Importar \d+ operações/ }).click()
+        await p.waitForSelector('text=Resumo')
+        const n = await p.locator('[aria-expanded]').filter({ hasText: 'Quantidade' }).count()
+        if (n < 1) erros.push('não apareceram posições')
+        if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push('a página tem scroll para o lado')
+        await p.locator('[aria-expanded]').filter({ hasText: 'Quantidade' }).first().click()
+        await p.screenshot({ path: `${PASTA}/${nome}-pagina.png`, fullPage: true })
+        // o Radar mostra 💼 nas ações da carteira
+        await p.goto(BASE + '#/')
+        await p.waitForSelector(largura > 700 ? '[data-tabela-radar] tbody tr' : 'ul li a[href*="acao/"]')
+        if (!(await p.locator('[aria-label="Na carteira"]').count())) erros.push('o Radar não mostra 💼 nas ações da carteira')
+      },
+    })
+  }
+}
 
 await browser.close()
 servidor.kill()
