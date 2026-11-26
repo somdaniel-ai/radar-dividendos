@@ -1,5 +1,6 @@
 """Decisões sobre extraordinários lidas da conta (Supabase), sem internet."""
 import datetime as dt
+import json
 
 from radar import decisoes as dec
 from radar import gerar
@@ -84,8 +85,11 @@ def test_motor_usa_as_decisoes_e_da_prioridade_as_novas(tmp_path, monkeypatch):
     conta.append({"ticker": "AAA.US", "data": "2026-06-01", "decisao": "rejeitar", "valor_extra": 0})
     meta = gerar.executar(saida, fornecedor=Fornecedor(), pasta_cache=cache, pasta_universo=uni,
                           agora=DIA + dt.timedelta(days=1), minutos=0)
-    ass = meta["decisoes_conta"]["assinaturas"]
+    ass = json.loads((cache / "decisoes_assinaturas.json").read_text(encoding="utf-8"))
     assert "BBB.US" in ass and "AAA.US" not in ass
+    # dados pessoais: o meta.json publicado só tem contagens, nunca as ações nem as decisões
+    publicado = (saida / "meta.json").read_text(encoding="utf-8")
+    assert "assinaturas" not in publicado and "BBB.US" not in publicado and "AAA.US" not in publicado
     assert meta["decisoes_conta"] == {**meta["decisoes_conta"], "lidas": True, "total": 2}
 
     # na noite seguinte o AAA.US é o primeiro a ser processado
@@ -93,4 +97,4 @@ def test_motor_usa_as_decisoes_e_da_prioridade_as_novas(tmp_path, monkeypatch):
     meta = gerar.executar(saida, fornecedor=Fornecedor(), pasta_cache=cache, pasta_universo=uni,
                           agora=DIA + dt.timedelta(days=2))
     assert next(iter(vistos)) == "AAA.US"
-    assert "AAA.US" in meta["decisoes_conta"]["assinaturas"]
+    assert "AAA.US" in json.loads((cache / "decisoes_assinaturas.json").read_text(encoding="utf-8"))

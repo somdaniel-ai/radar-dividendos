@@ -227,7 +227,12 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     # decisões sobre extraordinários tomadas na app (conta Supabase), juntas às dos CSV
     conta = dec.ler_da_conta()
     extras, rejeitados = dec.juntar(extras, rejeitados, conta)
-    antigas = antigo_meta.get("decisoes_conta", {}).get("assinaturas", {})
+    # assinaturas das decisões (para saber o que mudou de uma noite para a outra): ficam na
+    # cópia local do motor (cache), NUNCA no meta.json, que é publicado no site (dados pessoais)
+    ficheiro_ass = cache.pasta / "decisoes_assinaturas.json"
+    antigas = _ler_json(ficheiro_ass, None)
+    if antigas is None:  # versões antigas guardavam-nas no meta.json
+        antigas = antigo_meta.get("decisoes_conta", {}).get("assinaturas", {})
     novas_ass = dec.assinaturas(conta) if conta is not None else antigas
     decisoes_mudaram = dec.mudaram(antigas, novas_ass) & no_universo
     # alertas: carteira (ticker + quantidade), favoritos e escolhas — só com a chave do motor
@@ -410,13 +415,8 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
                     "sem_dividendos_nesta_execucao": len(sem_dividendos),
                     "estados": triagem.contagem()},
         "erros": erros[-500:],
-        # decisões da conta: quantas foram lidas e o que já foi aplicado (o que ficou por
-        # processar fica com a assinatura antiga, para voltar a ir à frente na próxima vez)
-        "decisoes_conta": {
-            "lidas": conta is not None, "total": len(conta or []),
-            "assinaturas": {t: v for t, v in {**novas_ass, **{t: antigas.get(t) for t in decisoes_mudaram
-                            if t not in processados}}.items() if v is not None},
-        },
+        # decisões da conta: só contagens (o meta.json é público)
+        "decisoes_conta": {"lidas": conta is not None, "total": len(conta or [])},
         "duracao_segundos": round(time.time() - inicio, 1),
         "aviso": "Ferramenta de apoio pessoal. Não constitui aconselhamento financeiro nem fiscal.",
     }
@@ -439,7 +439,6 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
                                    p["pagamentos"]["tolerancia_igual"])
         novos_alertas = al.registar(itens_alerta)
         log.info("Alertas: %s calculados, %s novos", len(itens_alerta), novos_alertas if novos_alertas is not None else "?")
-        meta["alertas"] = {"calculados": len(itens_alerta), "novos": novos_alertas}
     # estado de cada instrumento do universo (para o ecrã "Universo" da app)
     no_radar = {r["ticker"] for r in resumos}
     _escrever(saida / "universo.json", {"gerado_em": meta["gerado_em"], "instrumentos": {
@@ -448,6 +447,10 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
         for i in todos}})
     _escrever(saida / "cambios.json", {"gerado_em": meta["gerado_em"], "base": "EUR",
                                        "eur_por_unidade": cambios})
+    # o que já foi aplicado; o que ficou por processar fica com a assinatura antiga, para
+    # voltar a ir à frente na próxima vez
+    _escrever(ficheiro_ass, {t: v for t, v in {**novas_ass, **{t: antigas.get(t) for t in decisoes_mudaram
+                             if t not in processados}}.items() if v is not None})
     _escrever(saida / "meta.json", meta)
     _escrever(saida / "definicoes_padrao.json", p)
     return meta
