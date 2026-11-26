@@ -57,7 +57,7 @@ function Campo({ caminho, rotulo, tipo, ajuda, opcoes, sufixo }: {
           </button>
         )}
       </div>
-      <div id={caminho}>
+      <div id={caminho} className="max-w-full">
         {tipo === 'bool' && (
           <input type="checkbox" className="size-5" checked={Boolean(v)} onChange={e => alterar(caminho, e.target.checked)} aria-label={rotulo} />
         )}
@@ -71,7 +71,7 @@ function Campo({ caminho, rotulo, tipo, ajuda, opcoes, sufixo }: {
         )}
         {tipo === 'select' && (
           <select value={String(v)} onChange={e => alterar(caminho, e.target.value)} aria-label={rotulo}
-            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-950">
+            className="max-w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-950">
             {opcoes?.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
           </select>
         )}
