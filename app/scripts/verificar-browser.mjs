@@ -250,6 +250,36 @@ for (const [nome, largura, altura] of [['simular-pc', 1366, 900], ['simular-tele
   })
 }
 
+// Calendário: favoritos com datas → lista dos próximos meses e grelha do mês
+await verificar('calendario-vazio', '#/calendario', { espera: 'text=Ainda não há ações para mostrar' })
+const comDatas = radar.acoes.filter(a => a.pagamentos_ano > 0 && a.pagamento.ultimo_ex).slice(0, 6).map(a => a.ticker)
+for (const [nome, largura, altura] of [['calendario-pc', 1366, 900], ['calendario-telemovel', 390, 844]]) {
+  await verificar(nome, '#/calendario', {
+    largura, altura, espera: '[data-lembrete-ex]',
+    armazenamento: { 'radar.favoritos': JSON.stringify(comDatas) },
+    extra: async (p, erros) => {
+      const semScroll = async onde => {
+        const w = await p.evaluate(() => document.documentElement.scrollWidth)
+        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px)`)
+      }
+      await p.waitForSelector('[data-vista-lista]')
+      const n = await p.locator('[data-vista-lista] [data-evento]').count()
+      if (n < comDatas.length) erros.push(`lista com poucas datas (${n} para ${comDatas.length} ações)`)
+      if (!(await p.locator('[data-vista-lista] [data-evento="ex"]').count())) erros.push('a lista não tem datas ex-dividendo')
+      await semScroll('lista')
+      await p.screenshot({ path: `${PASTA}/${nome}-lista.png`, fullPage: true })
+      await p.getByRole('tab', { name: 'Mês', exact: true }).click()
+      await p.waitForSelector('[data-grelha-mes]')
+      const dias = await p.locator('[data-grelha-mes] tbody td').count()
+      if (dias % 7 || dias < 28) erros.push(`grelha do mês estranha (${dias} células)`)
+      await p.getByRole('button', { name: 'Mês seguinte' }).click()
+      await p.waitForSelector('text=voltar a este mês')
+      await semScroll('mês')
+      await p.screenshot({ path: `${PASTA}/${nome}-mes.png`, fullPage: true })
+    },
+  })
+}
+
 // Só no PC do utilizador: importa o extrato real que está em privado/ (no GitHub não existe).
 // As capturas ficam em app/verificacao/ (fora do Git).
 const extrato = existsSync('../privado') && readdirSync('../privado').find(f => /^EUR_.*\.xlsx$/i.test(f))
@@ -264,10 +294,63 @@ if (extrato) {
         await p.screenshot({ path: `${PASTA}/${nome}-previa.png` })
         await p.getByRole('button', { name: /^Importar \d+ operaç(ão|ões)/ }).click()
         await p.waitForSelector('text=Resumo')
-        const n = await p.locator('[aria-expanded]').filter({ hasText: 'Quantidade' }).count()
+        const pc = largura > 700
+        const posicao = p.locator(pc ? '[data-tabela-carteira] tr[data-posicao]' : '[data-cartao-posicao] [aria-expanded]')
+        const n = await posicao.count()
         if (n < 1) erros.push('não apareceram posições')
         if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push('a página tem scroll para o lado')
-        await p.locator('[aria-expanded]').filter({ hasText: 'Quantidade' }).first().click()
+        if (pc) {
+          // tabela: cabe sem scroll, linha de totais, ordenar ao clicar, títulos presos, botão Colunas
+          const m = await p.evaluate(() => {
+            const c = document.querySelector('[data-tabela-carteira]')
+            return { estreita: c.hasAttribute('data-estreita'), tabela: c.querySelector('table').offsetWidth, caixa: c.clientWidth,
+              cortadas: [...c.querySelectorAll('th, td')].filter(x => x.scrollWidth > x.clientWidth + 1).length }
+          })
+          console.log(`    tabela da carteira: ${m.tabela} px de ${m.caixa} px`)
+          if (m.estreita) erros.push(`a tabela da carteira não coube (${m.tabela} > ${m.caixa} px)`)
+          if (m.cortadas) erros.push(`${m.cortadas} células da carteira com texto cortado`)
+          const tot = await p.locator('[data-totais]').innerText()
+          if (!/Total/.test(tot) || !/investido/.test(tot) || !/€/.test(tot)) erros.push('falta a linha de totais')
+          const primeiro = async () => p.locator('[data-tabela-carteira] tr[data-posicao]').first().getAttribute('data-posicao')
+          const antes = await primeiro()
+          await p.locator('[data-tabela-carteira] th button', { hasText: /^Ação/i }).click()
+          const ord = await p.locator('[data-tabela-carteira] th[aria-sort]').innerText()
+          if (!/ação/i.test(ord)) erros.push('clicar no título não ordenou a carteira')
+          const nomes = await p.locator('[data-tabela-carteira] tr[data-posicao]').evaluateAll(r => r.map(x => x.dataset.posicao))
+          if (nomes.join() !== [...nomes].sort((a, b) => a.localeCompare(b)).join()) erros.push(`ordem por nome errada (${nomes.join(', ')}; antes começava em ${antes})`)
+          await p.locator('[data-tabela-carteira] th button', { hasText: /Valor atual/i }).click()
+          const th0 = await p.locator('[data-tabela-carteira] th').first().boundingBox()
+          await p.evaluate(() => window.scrollTo(0, document.querySelector('[data-tabela-carteira]').getBoundingClientRect().top + window.scrollY + 150))
+          await p.waitForTimeout(250)
+          const topo = (await p.locator('header').first().boundingBox()).height
+          const th1 = await p.locator('[data-tabela-carteira] th').first().boundingBox()
+          if (n > 3 && Math.abs(th1.y - topo) > 2) erros.push(`títulos da carteira não ficaram presos (${th1.y} vs ${topo}; antes ${th0.y})`)
+          await p.screenshot({ path: `${PASTA}/${nome}-tabela-descida.png` })
+          await p.evaluate(() => window.scrollTo(0, 0))
+          const cols = async () => p.locator('[data-tabela-carteira] thead th').count()
+          const c0 = await cols()
+          await p.getByRole('button', { name: 'Colunas', exact: true }).click()
+          await p.getByLabel('Preço médio', { exact: true }).check()
+          await p.getByLabel('Preço atual', { exact: true }).check()
+          await p.getByLabel('Yield atual (líquido)', { exact: true }).check()
+          if ((await cols()) !== c0 + 3) erros.push(`o botão Colunas não acrescentou as 3 colunas (${c0} → ${await cols()})`)
+          const m2 = await p.evaluate(() => {
+            const c = document.querySelector('[data-tabela-carteira]')
+            return { tabela: c.querySelector('table').offsetWidth, caixa: c.clientWidth, pagina: document.documentElement.scrollWidth }
+          })
+          console.log(`    com todas as colunas: ${m2.tabela} px de ${m2.caixa} px`)
+          if (m2.pagina > largura) erros.push('com todas as colunas, a página inteira ficou com scroll para o lado')
+          await p.screenshot({ path: `${PASTA}/${nome}-todas-colunas.png`, fullPage: true })
+          await p.getByRole('button', { name: 'Voltar às colunas por defeito' }).click()
+          await p.getByRole('button', { name: 'Colunas', exact: true }).click()
+        } else {
+          await p.getByLabel('Ordenar por').selectOption('acao')
+          const nomes = await p.locator('[data-cartao-posicao] a[href*="acao/"], [data-cartao-posicao] .font-semibold:first-child').evaluateAll(r => r.length)
+          if (!nomes) erros.push('cartões sem nome da ação')
+          if (!(await p.locator('[data-totais-telemovel]').count())) erros.push('faltam os totais no telemóvel')
+        }
+        await posicao.first().click()
+        if (!(await p.locator('[data-detalhe-posicao]').count())) erros.push('clicar na posição não abriu os lotes')
         await p.screenshot({ path: `${PASTA}/${nome}-pagina.png`, fullPage: true })
         // o Radar mostra 💼 nas ações da carteira
         await p.goto(BASE + '#/')
@@ -330,6 +413,16 @@ if (extrato) {
         if (!(await p.locator('[data-detalhes-acao]', { hasText: 'investidos' }).count())) erros.push('a Distribuição não mostra 💼 com o valor investido')
         if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push('Distribuição com scroll para o lado')
         await p.screenshot({ path: `${PASTA}/${nome}-distribuicao-carteira.png`, fullPage: true })
+        // Calendário só da carteira: valores previstos em euros
+        await p.goto(BASE + '#/calendario?vista=lista')
+        await p.waitForSelector('[data-lembrete-ex]')
+        await p.getByRole('tab', { name: '💼 Carteira' }).click()
+        if (!(await p.locator('[data-vista-lista] [data-evento]', { hasText: 'líquido' }).count())) erros.push('o Calendário não mostra os valores previstos da carteira')
+        if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push('Calendário com scroll para o lado')
+        await p.screenshot({ path: `${PASTA}/${nome}-calendario.png`, fullPage: true })
+        await p.getByRole('tab', { name: 'Mês', exact: true }).click()
+        await p.getByRole('button', { name: 'Mês anterior' }).click()
+        await p.screenshot({ path: `${PASTA}/${nome}-calendario-mes-anterior.png`, fullPage: true })
       },
     })
   }

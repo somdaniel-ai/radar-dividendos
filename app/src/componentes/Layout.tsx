@@ -12,8 +12,10 @@ const LINKS = [
   { para: '/favoritos', texto: 'Favoritos', icone: '★' },
   { para: '/carteira', texto: 'Carteira', icone: '💼' },
   { para: '/simular', texto: 'Simular', icone: '🧮' },
+  { para: '/calendario', texto: 'Calendário', icone: '📅' },
   { para: '/definicoes', texto: 'Definições', icone: '⚙️' },
-  { para: '/sobre', texto: 'Sobre', icone: 'ℹ️' },
+  // no telemóvel, o "Sobre" fica no rodapé (a barra de baixo só tem lugar para 6)
+  { para: '/sobre', texto: 'Sobre', icone: 'ℹ️', soPc: true },
 ]
 
 export function Layout() {
@@ -75,6 +77,7 @@ export function Layout() {
         <RedeSeguranca chave={pathname}><Outlet /></RedeSeguranca>
         <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500 dark:border-slate-800">
           <p>{AVISO_LEGAL}</p>
+          <p className="mt-1 md:hidden"><Link to="/sobre" className="underline">ℹ️ Sobre esta app</Link></p>
           {meta && <p className="mt-1 lg:hidden">Dados atualizados em {dataHora(meta.gerado_em)}</p>}
         </footer>
       </main>
@@ -82,7 +85,7 @@ export function Layout() {
       <nav className="barra-inferior fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-950/95"
         aria-label="Navegação">
         <div className="grid grid-cols-6">
-          {LINKS.map(l => (
+          {LINKS.filter(l => !l.soPc).map(l => (
             <NavLink key={l.para} to={l.para} end
               className={({ isActive }) => `flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${isActive
                 ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500'}`}>

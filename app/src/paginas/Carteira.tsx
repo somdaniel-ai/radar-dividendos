@@ -4,12 +4,13 @@ import { Link } from 'react-router-dom'
 import { Carregando, Cartao, Erro } from '../componentes/Comuns'
 import { AgruparPor, BarrasPeso } from '../componentes/Barras'
 import { TextoSync } from '../componentes/Conta'
+import { corLucro, TabelaPosicoes } from '../componentes/TabelaPosicoes'
 import {
   calcularCarteira, diversificacao, juntar, pagamentos, porMes, resumo, verificar, type Diferenca, type Posicao,
 } from '../lib/carteira'
 import { useApp } from '../lib/contexto'
 import { lerFicheiroExtrato, type Extrato, type Transacao } from '../lib/extrato'
-import { data, euros, moeda, numero, pct } from '../lib/formato'
+import { data, euros, numero, pct } from '../lib/formato'
 
 const AZUL = '#0284c7'
 
@@ -23,7 +24,6 @@ function Numero({ rotulo, valor, sub, cor = '' }: { rotulo: string; valor: strin
   )
 }
 
-const corLucro = (x: number | null) => (x == null ? '' : x >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')
 const mes = (m: string) => new Date(`${m}-01T12:00:00Z`).toLocaleDateString('pt-PT', { month: 'short', year: '2-digit' })
 
 // ——— importação ———
@@ -171,66 +171,6 @@ function CompraManual({ carteira, gravar, fechar }: { carteira: Transacao[]; gra
   )
 }
 
-// ——— posições ———
-
-function LinhaPosicao({ p, apagar }: { p: Posicao; apagar: (id: string) => void }) {
-  const [aberta, setAberta] = useState(false)
-  const m = p.acao?.cotacao_xtb?.moeda ?? p.acao?.moeda ?? null
-  return (
-    <li className="rounded-xl ring-1 ring-slate-200 dark:ring-slate-800">
-      <button type="button" onClick={() => setAberta(v => !v)} aria-expanded={aberta}
-        className="flex w-full flex-wrap items-start justify-between gap-x-4 gap-y-1 p-3 text-left">
-        <div className="min-w-0">
-          <div className="font-semibold">{p.ticker} {p.retencao.aviso && <span title="Retenção acima da esperada">⚠️</span>}</div>
-          <div className="text-xs text-slate-500">{p.nome}</div>
-        </div>
-        <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4 lg:grid-cols-7">
-          <div><dt className="text-slate-500">Quantidade</dt><dd className="font-medium">{numero(p.quantidade, 4)}</dd></div>
-          <div><dt className="text-slate-500">Preço médio</dt><dd>{p.preco_medio != null ? moeda(p.preco_medio, m) : '—'}</dd></div>
-          <div><dt className="text-slate-500">Investido</dt><dd>{euros(p.custo_eur)}</dd></div>
-          <div><dt className="text-slate-500">Valor atual</dt><dd className="font-medium">{euros(p.valor_eur)}</dd></div>
-          <div><dt className="text-slate-500">Lucro/prejuízo</dt>
-            <dd className={corLucro(p.lucro_eur)}>{euros(p.lucro_eur)} {p.lucro_pct != null && `(${pct(p.lucro_pct)})`}</dd></div>
-          <div><dt className="text-slate-500">Dividendos recebidos</dt><dd>{euros(p.dividendos.liquido)} <span className="text-slate-500">líq.</span></dd></div>
-          <div><dt className="text-slate-500">Previsto / ano</dt>
-            <dd>{euros(p.previsto.anual_liquido)} <span className="text-slate-500">· YoC {pct(p.yield_on_cost.liquido)}</span></dd></div>
-        </dl>
-      </button>
-      {aberta && (
-        <div className="border-t border-slate-200 p-3 text-xs dark:border-slate-800">
-          {p.retencao.aviso && (
-            <p className="mb-2 rounded-lg bg-amber-50 p-2 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-900">
-              ⚠️ A XTB reteve <b>{pct(p.retencao.real, 0)}</b> nos dividendos, mas o esperado para {p.acao?.pais ?? 'este país'} (nas suas Definições) é <b>{pct(p.retencao.esperada, 0)}</b>.
-              {p.acao?.pais === 'Estados Unidos'
-                ? ' Causa provável: o formulário W-8BEN não está preenchido ou expirou (sem ele os EUA retêm 30% em vez de 15%). Confirme na área de cliente da XTB (documentos/formulários) ou pergunte ao apoio ao cliente se o W-8BEN está ativo.'
-                : ' Causa provável: a corretora não está a aplicar a taxa da convenção entre Portugal e esse país. Pode pedir a devolução do excesso ao país de origem, ou confirmar a taxa nas Definições.'}
-            </p>
-          )}
-          <table className="w-full">
-            <thead className="text-left text-slate-500"><tr><th className="py-1 font-normal">Compra</th><th className="font-normal">Quantidade</th><th className="font-normal">Preço</th><th className="font-normal">Custo</th><th /></tr></thead>
-            <tbody>
-              {p.lotes.map(l => (
-                <tr key={l.id} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="py-1">{data(l.data)}{l.origem === 'manual' && <span className="ml-1 text-slate-500">(manual)</span>}</td>
-                  <td>{numero(l.quantidade, 4)}</td><td>{l.preco != null ? moeda(l.preco, m) : '—'}</td><td>{euros(l.custo_eur)}</td>
-                  <td className="text-right">{l.origem === 'manual' && (
-                    <button type="button" className="text-red-700 underline dark:text-red-400"
-                      onClick={() => { if (confirm('Apagar esta compra manual?')) apagar(l.id) }}>apagar</button>)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mt-2 flex flex-wrap gap-x-4 text-slate-500">
-            <span>Dividendos recebidos: bruto {euros(p.dividendos.bruto)} · retido {euros(p.dividendos.retido)} · líquido {euros(p.dividendos.liquido)}</span>
-            {p.acao ? <Link to={`/acao/${p.ticker}`} className="text-sky-700 underline dark:text-sky-400">Ver a ação no radar</Link>
-              : <span>Não está no radar: sem cotação atual nem previsão.</span>}
-          </div>
-        </div>
-      )}
-    </li>
-  )
-}
-
 // ——— gráficos ———
 
 function DicaMes({ active, payload }: { active?: boolean; payload?: { payload: { mes: string; bruto: number; retido: number; liquido: number } }[] }) {
@@ -326,9 +266,7 @@ export function Carteira() {
             </div>
           )}
 
-          <Cartao titulo="Posições">
-            <ul className="space-y-2">{posicoes.map(p => <LinhaPosicao key={p.ticker} p={p} apagar={apagar} />)}</ul>
-          </Cartao>
+          <TabelaPosicoes posicoes={posicoes} apagar={apagar} />
 
           <div className="grid gap-3 lg:grid-cols-2">
             <Cartao titulo="Dividendos recebidos por mês (líquidos)">

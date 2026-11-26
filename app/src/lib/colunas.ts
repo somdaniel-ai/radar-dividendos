@@ -18,19 +18,41 @@ export const COLUNAS_RADAR = [
   { id: 'sinais', nome: 'Sinais', padrao: true },
 ] as const
 
+/** Colunas da tabela de posições da Carteira (PC). Ficam no mesmo registo das do Radar
+ *  (ids começados por "c_"), por isso também são guardadas na conta. */
+export const COLUNAS_CARTEIRA = [
+  { id: 'c_qtd', nome: 'Quantidade', padrao: true },
+  { id: 'c_pmedio', nome: 'Preço médio', padrao: false },
+  { id: 'c_patual', nome: 'Preço atual', padrao: false },
+  { id: 'c_valor', nome: 'Valor atual', padrao: true },
+  { id: 'c_ganho', nome: 'Ganho/perda (€ e %)', padrao: true },
+  { id: 'c_peso', nome: 'Peso na carteira', padrao: true },
+  { id: 'c_mes', nome: 'Previsto por mês (líquido)', padrao: true },
+  { id: 'c_yield', nome: 'Yield atual (líquido)', padrao: false },
+  { id: 'c_yoc', nome: 'Yield sobre o custo (líquido)', padrao: true },
+  { id: 'c_ex', nome: 'Próxima data ex-dividendo', padrao: true },
+  { id: 'c_pag', nome: 'Próximo pagamento', padrao: true },
+  { id: 'c_receb', nome: 'Dividendos recebidos', padrao: true },
+] as const
+
+export type ListaColunas = readonly { id: string; nome: string; padrao: boolean }[]
+
 export const CHAVE_COLUNAS = 'radar.colunas'
 
-const padrao = (): Record<string, boolean> => Object.fromEntries(COLUNAS_RADAR.map(c => [c.id, c.padrao]))
+const padrao = (lista: ListaColunas = [...COLUNAS_RADAR, ...COLUNAS_CARTEIRA]): Record<string, boolean> =>
+  Object.fromEntries(lista.map(c => [c.id, c.padrao]))
 
 export function lerColunas(): Record<string, boolean> {
   return { ...padrao(), ...ler<Record<string, boolean>>(CHAVE_COLUNAS, {}) }
 }
 
-export function useColunas() {
+/** Colunas visíveis de uma tabela (por defeito, a do Radar). */
+export function useColunas(lista: ListaColunas = COLUNAS_RADAR) {
   const { colunas, gravarColunas } = useApp()
-  const visiveis = { ...padrao(), ...colunas }
+  const visiveis = { ...padrao(lista), ...Object.fromEntries(lista.filter(c => c.id in colunas).map(c => [c.id, colunas[c.id]])) }
   const mudar = useCallback((id: string, ver: boolean) => gravarColunas({ ...colunas, [id]: ver }), [colunas, gravarColunas])
-  const repor = useCallback(() => gravarColunas(padrao()), [gravarColunas])
-  const personalizadas = COLUNAS_RADAR.some(c => visiveis[c.id] !== c.padrao)
-  return { visiveis, mudar, repor, personalizadas }
+  // repor só mexe nas colunas desta tabela
+  const repor = useCallback(() => gravarColunas({ ...colunas, ...padrao(lista) }), [colunas, gravarColunas, lista])
+  const personalizadas = lista.some(c => visiveis[c.id] !== c.padrao)
+  return { visiveis, mudar, repor, personalizadas, lista }
 }
