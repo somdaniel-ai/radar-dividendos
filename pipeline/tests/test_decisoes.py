@@ -1,6 +1,7 @@
 """Decisões sobre extraordinários lidas da conta (Supabase), sem internet."""
 import datetime as dt
 import json
+import logging
 
 from radar import decisoes as dec
 from radar import gerar
@@ -65,7 +66,7 @@ def test_juntar_a_conta_ganha():
     assert dec.juntar(extras, rej, None) == (extras, rej)
 
 
-def test_motor_usa_as_decisoes_e_da_prioridade_as_novas(tmp_path, monkeypatch):
+def test_motor_usa_as_decisoes_e_da_prioridade_as_novas(tmp_path, monkeypatch, caplog):
     uni = _universo(tmp_path / "universo")
     saida, cache = tmp_path / "data", tmp_path / "cache"
     conta = [{"ticker": "BBB.US", "data": "2026-06-01", "decisao": "confirmar", "valor_extra": 0.05}]
@@ -78,8 +79,11 @@ def test_motor_usa_as_decisoes_e_da_prioridade_as_novas(tmp_path, monkeypatch):
         return original(item, *a, **k)
     monkeypatch.setattr(gerar, "analisar", espiar)
 
+    caplog.set_level(logging.INFO)
     gerar.executar(saida, fornecedor=Fornecedor(), pasta_cache=cache, pasta_universo=uni, agora=DIA)
     assert vistos["BBB.US"] == {"2026-06-01": 0.05}
+    # o registo (público no GitHub) nunca mostra as ações prioritárias pelo nome
+    assert "BBB.US" not in caplog.text and "•••" in caplog.text and "AAA.US" in caplog.text
 
     # sem tempo para nada: a decisão nova fica por aplicar (volta a ir à frente na próxima noite)
     conta.append({"ticker": "AAA.US", "data": "2026-06-01", "decisao": "rejeitar", "valor_extra": 0})

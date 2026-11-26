@@ -252,3 +252,12 @@ def test_sem_segredos(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     with pytest.raises(SystemExit, match="SUPABASE_CHAVE_MOTOR"):
         tg.teste()
+
+
+def test_filtro_do_registo_esconde_os_simbolos():
+    import logging
+    from radar.gerar import OcultarNoRegisto
+    f = OcultarNoRegisto({"DX.US", "DX", "O"})
+    r = logging.LogRecord("x", logging.INFO, "", 0, "[%s/%s] %s (%s) ok; DX.DE e O.US ficam; O tempo; fim DX.", (1, 9, "DX.US", "DX"), None)
+    f.filter(r)
+    assert r.getMessage() == "[1/9] ••• (•••) ok; DX.DE e O.US ficam; ••• tempo; fim •••."

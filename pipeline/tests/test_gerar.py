@@ -66,7 +66,7 @@ def test_atualizacao_parcial_junta_ao_radar_existente(tmp_path):
     depois = _radar(saida)
     assert meta["tipo_atualizacao"] == "parcial"
     assert meta["total_radar"] == 3 and set(depois) == {"AAA.US", "BBB.US", "CCC.US"}
-    assert meta["atualizados_nesta_execucao"] == ["AAA.US"]
+    assert meta["atualizados_nesta_execucao"] == 1
     assert depois["AAA.US"]["preco"] == 8.0
     assert depois["BBB.US"] == {**antes["BBB.US"], "posicao_ranking": depois["BBB.US"]["posicao_ranking"]}
     assert meta["ultima_atualizacao_completa"] == dia1.isoformat(timespec="seconds")

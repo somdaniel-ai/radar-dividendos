@@ -47,6 +47,36 @@ def _escrever(caminho: Path, dados) -> None:
                        encoding="utf-8")
 
 
+class OcultarNoRegisto(logging.Filter):
+    """Troca por "•••" os símbolos das ações da carteira/favoritos/decisões em TODAS as linhas do
+    registo. O registo do GitHub Actions é público e essas ações são processadas primeiro: sem
+    isto, as primeiras linhas mostrariam a lista pessoal."""
+
+    def __init__(self, termos: set[str]):
+        super().__init__()
+        termos = sorted({t for t in termos if t}, key=len, reverse=True)
+        self.padrao = (re.compile(r"(?<![A-Za-z0-9.])(" + "|".join(map(re.escape, termos)) + r")(?![A-Za-z0-9]|\.[A-Za-z0-9])")
+                       if termos else None)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if self.padrao:
+            texto = record.getMessage()
+            novo = self.padrao.sub("•••", texto)
+            if novo != texto:
+                record.msg, record.args = novo, None
+        return True
+
+
+def _ocultar_no_registo(itens: list[dict]) -> OcultarNoRegisto | None:
+    termos = {x for i in itens for x in (i.get("ticker_xtb"), i.get("ticker_yahoo"), i.get("ticker_yahoo_xtb"))}
+    if not termos:
+        return None
+    filtro = OcultarNoRegisto(termos)
+    for h in logging.getLogger().handlers:
+        h.addFilter(filtro)
+    return filtro
+
+
 def _ler_json(caminho: Path, padrao):
     try:
         return json.loads(caminho.read_text(encoding="utf-8"))
@@ -254,6 +284,8 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
         if primeiro:
             frente = [i for i in todos if i["ticker_xtb"] in decisoes_mudaram] +                      [i for i in todos if i["ticker_xtb"] in do_interesse - decisoes_mudaram]
             itens = frente + [i for i in itens if i["ticker_xtb"] not in primeiro]
+    # dados pessoais: estas ações nunca aparecem pelo nome no registo (público) do GitHub
+    filtro_registo = _ocultar_no_registo([i for i in todos if i["ticker_xtb"] in (decisoes_mudaram | do_interesse)])
     agendados = len(itens)
     prazo = None if (tickers or limite) else inicio + (minutos if minutos is not None else _minutos_dados()) * 60
 
@@ -402,7 +434,8 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
         "data_referencia": hoje.isoformat(),
         "fornecedor": f.nome,
         "tipo_atualizacao": "completa" if completa else "parcial",
-        "atualizados_nesta_execucao": sorted(novos),
+        # só a contagem: numa execução curta, a lista seria quase só a carteira/favoritos
+        "atualizados_nesta_execucao": len(novos),
         "ultima_atualizacao_completa": (agora.isoformat(timespec="seconds") if completa
                                         else antigo_meta.get("ultima_atualizacao_completa")),
         "total_universo": len(todos),
@@ -414,7 +447,8 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
                     "por_processar": agendados - len(processados), "interrompido": interrompido,
                     "sem_dividendos_nesta_execucao": len(sem_dividendos),
                     "estados": triagem.contagem()},
-        "erros": erros[-500:],
+        # por ordem alfabética (a ordem de processamento revelaria as ações prioritárias)
+        "erros": sorted(erros[-500:], key=lambda e: e["ticker"]),
         # decisões da conta: só contagens (o meta.json é público)
         "decisoes_conta": {"lidas": conta is not None, "total": len(conta or [])},
         "duracao_segundos": round(time.time() - inicio, 1),
@@ -452,6 +486,9 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     _escrever(ficheiro_ass, {t: v for t, v in {**novas_ass, **{t: antigas.get(t) for t in decisoes_mudaram
                              if t not in processados}}.items() if v is not None})
     _escrever(saida / "meta.json", meta)
+    if filtro_registo:
+        for h in logging.getLogger().handlers:
+            h.removeFilter(filtro_registo)
     _escrever(saida / "definicoes_padrao.json", p)
     return meta
 
@@ -468,7 +505,7 @@ def main(argv=None):
                         stream=sys.stdout)
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
     meta = executar(Path(a.saida), a.tickers.split(",") if a.tickers else None, a.limite)
-    print(f"\nConcluído ({meta['tipo_atualizacao']}): {len(meta['atualizados_nesta_execucao'])} "
+    print(f"\nConcluído ({meta['tipo_atualizacao']}): {meta['atualizados_nesta_execucao']} "
           f"atualizadas, {meta['total_radar']} no radar, {len(meta['sem_dividendos_recentes'])} sem "
           f"dividendos recentes, {len(meta['erros'])} erros, {meta['duracao_segundos']} s.")
     for e in meta["erros"]:
