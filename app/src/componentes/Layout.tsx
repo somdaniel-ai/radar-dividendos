@@ -38,15 +38,16 @@ export function Layout() {
   return (
     <div className="min-h-dvh text-slate-900 dark:text-slate-100">
       <header ref={topo} className="topo-seguro sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-3 xl:gap-4">
           <NavLink to="/" className="flex items-center gap-2 font-bold">
             <span aria-hidden className="text-xl">📡</span>
-            <span>Radar de Dividendos</span>
+            {/* em janelas médias (tablet / PC estreito) só o ícone, para o menu caber */}
+            <span className="md:max-xl:sr-only">Radar de Dividendos</span>
           </NavLink>
           <nav className="hidden gap-1 md:flex" aria-label="Navegação principal">
             {LINKS.map(l => (
               <NavLink key={l.para} to={l.para} end
-                className={({ isActive }) => `rounded-lg px-3 py-1.5 text-sm font-medium ${isActive
+                className={({ isActive }) => `${l.soPc ? 'hidden xl:block' : ''} rounded-lg px-2 py-1.5 text-sm font-medium xl:px-3 ${isActive
                   ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
                   : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
                 {l.texto}
@@ -77,7 +78,7 @@ export function Layout() {
         <RedeSeguranca chave={pathname}><Outlet /></RedeSeguranca>
         <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500 dark:border-slate-800">
           <p>{AVISO_LEGAL}</p>
-          <p className="mt-1 md:hidden"><Link to="/sobre" className="underline">ℹ️ Sobre esta app</Link></p>
+          <p className="mt-1 xl:hidden"><Link to="/sobre" className="underline">ℹ️ Sobre esta app</Link></p>
           {meta && <p className="mt-1 lg:hidden">Dados atualizados em {dataHora(meta.gerado_em)}</p>}
         </footer>
       </main>

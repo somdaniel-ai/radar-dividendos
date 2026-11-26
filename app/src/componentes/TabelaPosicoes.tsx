@@ -139,7 +139,7 @@ const NUM = -1e15 // valores em falta vão para o fim ao ordenar
 const ORDENACOES = [
   { id: 'c_valor', t: 'Valor atual' }, { id: 'c_ganho', t: 'Ganho/perda (€)' }, { id: 'c_ganho_pct', t: 'Ganho/perda (%)' },
   { id: 'c_peso', t: 'Peso' }, { id: 'c_mes', t: 'Previsto por mês' }, { id: 'c_yoc', t: 'Yield sobre o custo' },
-  { id: 'c_yield', t: 'Yield atual' }, { id: 'c_ex', t: 'Próxima data ex' }, { id: 'c_pag', t: 'Próximo pagamento' },
+  { id: 'c_yield', t: 'Yield atual' }, { id: 'c_freq', t: 'Frequência' }, { id: 'c_ex', t: 'Próxima data ex' }, { id: 'c_pag', t: 'Próximo pagamento' },
   { id: 'c_receb', t: 'Dividendos recebidos' }, { id: 'acao', t: 'Ação (A–Z)' },
 ] as const
 // as datas ordenam-se do mais próximo para o mais distante; o resto do maior para o menor
@@ -180,6 +180,8 @@ export function TabelaPosicoes({ posicoes, apagar }: { posicoes: Posicao[]; apag
     col.accessor(l => l.p.previsto.mensal_liquido ?? NUM, { id: 'c_mes', header: 'Previsto/mês', sortDescFirst: true, cell: c => euros(c.row.original.p.previsto.mensal_liquido) }),
     col.accessor(l => l.p.acao?.yield.liquido ?? NUM, { id: 'c_yield', header: 'Yield atual', sortDescFirst: true, cell: c => pct(c.row.original.p.acao?.yield.liquido) }),
     col.accessor(l => l.p.yield_on_cost.liquido ?? NUM, { id: 'c_yoc', header: 'Yield s/ custo', sortDescFirst: true, cell: c => pct(c.row.original.p.yield_on_cost.liquido) }),
+    // a mesma frequência do Radar; ordena da mais frequente (mensal) para a menos (irregular)
+    col.accessor(l => l.p.acao?.pagamentos_ano ?? -1, { id: 'c_freq', header: 'Freq.', sortDescFirst: true, cell: c => c.row.original.p.acao?.frequencia ?? '—' }),
     col.accessor(l => l.ex?.data ?? '9999', { id: 'c_ex', header: 'Próx. ex', sortingFn: 'text', cell: c => <DataProxima d={c.row.original.ex} /> }),
     col.accessor(l => l.pag?.data ?? '9999', { id: 'c_pag', header: 'Próx. pag.', sortingFn: 'text', cell: c => <DataProxima d={c.row.original.pag} /> }),
     col.accessor(l => l.p.dividendos.liquido, { id: 'c_receb', header: 'Recebidos', sortDescFirst: true, cell: c => euros(c.getValue()) }),
@@ -266,6 +268,7 @@ export function TabelaPosicoes({ posicoes, apagar }: { posicoes: Posicao[]; apag
                   <div><dt className="text-slate-500">Ganho/perda</dt><dd><Ganho p={p} /></dd></div>
                   <div><dt className="text-slate-500">Previsto/mês</dt><dd className="font-semibold">{euros(p.previsto.mensal_liquido)}</dd></div>
                   <div><dt className="text-slate-500">Yield s/ custo</dt><dd>{pct(p.yield_on_cost.liquido)}</dd></div>
+                  <div><dt className="text-slate-500">Frequência</dt><dd>{p.acao?.frequencia ?? '—'}</dd></div>
                   <div><dt className="text-slate-500">Próx. ex</dt><dd><DataProxima d={l.ex} /></dd></div>
                   <div><dt className="text-slate-500">Próx. pag.</dt><dd><DataProxima d={l.pag} /></dd></div>
                   <div><dt className="text-slate-500">Recebidos</dt><dd>{euros(p.dividendos.liquido)}</dd></div>
@@ -297,7 +300,7 @@ export function TabelaPosicoes({ posicoes, apagar }: { posicoes: Posicao[]; apag
               <tr key={g.id}>
                 {g.headers.map(h => {
                   const s = h.column.getIsSorted()
-                  const direita = h.column.id !== 'acao' && h.column.id !== 'c_ex' && h.column.id !== 'c_pag'
+                  const direita = h.column.id !== 'acao' && h.column.id !== 'c_ex' && h.column.id !== 'c_pag' && h.column.id !== 'c_freq'
                   return (
                     <th key={h.id} aria-sort={s === 'asc' ? 'ascending' : s === 'desc' ? 'descending' : undefined}
                       className={`sticky ${estreita ? 'top-0' : 'top-(--altura-topo,4rem)'} border-b border-slate-200 bg-slate-50 px-2 py-2 align-bottom leading-tight first:pl-4 last:pr-4 dark:border-slate-700 dark:bg-slate-800 ${h.column.id === 'acao' ? `${fixaAcao} z-[12]` : 'z-[11]'} ${direita ? 'text-right' : ''}`}>
@@ -321,7 +324,7 @@ export function TabelaPosicoes({ posicoes, apagar }: { posicoes: Posicao[]; apag
                     className="group cursor-pointer" title="Clique para ver os lotes de compra">
                     {r.getVisibleCells().map(c => {
                       const id = c.column.id
-                      const direita = id !== 'acao' && id !== 'c_ex' && id !== 'c_pag'
+                      const direita = id !== 'acao' && id !== 'c_ex' && id !== 'c_pag' && id !== 'c_freq'
                       return (
                         <td key={c.id} className={`border-b border-slate-100 px-2 py-2 align-top first:pl-4 last:pr-4 group-hover:bg-sky-50 dark:border-slate-800 dark:group-hover:bg-slate-800 ${id === 'acao' ? `${fixaAcao} ${estreita ? 'z-10 bg-white dark:bg-slate-900' : ''}` : 'whitespace-nowrap'} ${direita ? 'text-right tabular-nums' : ''}`}>
                           {id === 'acao'

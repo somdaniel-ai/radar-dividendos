@@ -30,6 +30,7 @@ export const COLUNAS_CARTEIRA = [
   { id: 'c_mes', nome: 'Previsto por mês (líquido)', padrao: true },
   { id: 'c_yield', nome: 'Yield atual (líquido)', padrao: false },
   { id: 'c_yoc', nome: 'Yield sobre o custo (líquido)', padrao: true },
+  { id: 'c_freq', nome: 'Frequência', padrao: true },
   { id: 'c_ex', nome: 'Próxima data ex-dividendo', padrao: true },
   { id: 'c_pag', nome: 'Próximo pagamento', padrao: true },
   { id: 'c_receb', nome: 'Dividendos recebidos', padrao: true },

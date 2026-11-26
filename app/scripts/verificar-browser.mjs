@@ -128,6 +128,21 @@ await verificar('radar-pc-janela-estreita', '#/', {
     await p.screenshot({ path: `${PASTA}/radar-pc-janela-estreita-depois-de-descer.png` })
   },
 })
+// o menu do topo cabe com folga (o tipo de letra do Chrome no GitHub é um pouco mais largo)
+for (const largura of [800, 1024, 1280]) {
+  await verificar(`menu-topo-${largura}`, '#/sobre', {
+    largura, altura: 700, espera: 'header nav',
+    extra: async (p, erros) => {
+      const m = await p.evaluate(() => {
+        const caixa = document.querySelector('header > div')
+        const filhos = [...caixa.children].reduce((s, f) => s + f.getBoundingClientRect().width, 0)
+        return { filhos, caixa: caixa.clientWidth - 32 }
+      })
+      console.log(`    ${largura} px: menu ocupa ${Math.round(m.filhos)} de ${m.caixa} px`)
+      if (m.filhos > m.caixa - 40) erros.push(`o menu do topo está à justa ou não cabe (${Math.round(m.filhos)} de ${m.caixa} px)`)
+    },
+  })
+}
 await verificar('radar-telemovel', '#/', { largura: 390, altura: 844, espera: 'ul li a[href*="acao/"]' })
 await verificar('favoritos', '#/favoritos', { espera: 'h1' })
 if (umTicker) await verificar('acao', `#/acao/${encodeURIComponent(umTicker)}`, { espera: 'text=Porque recebeu este nível' })
@@ -318,6 +333,15 @@ if (extrato) {
           if (!/ação/i.test(ord)) erros.push('clicar no título não ordenou a carteira')
           const nomes = await p.locator('[data-tabela-carteira] tr[data-posicao]').evaluateAll(r => r.map(x => x.dataset.posicao))
           if (nomes.join() !== [...nomes].sort((a, b) => a.localeCompare(b)).join()) erros.push(`ordem por nome errada (${nomes.join(', ')}; antes começava em ${antes})`)
+          // coluna Frequência: visível por defeito e ordenável (mensal primeiro)
+          await p.locator('[data-tabela-carteira] th button', { hasText: /^Freq/i }).click()
+          const ordemFreq = ['Mensal', 'Trimestral', 'Semestral', 'Anual', 'Irregular', '—']
+          const freqs = await p.locator('[data-tabela-carteira] tr[data-posicao]').evaluateAll(rs => rs.map(r => {
+            const i = [...r.closest('table').querySelectorAll('thead th')].findIndex(th => /^Freq/i.test(th.innerText.trim()))
+            return r.children[i]?.innerText.trim()
+          }))
+          const idx = freqs.map(f => ordemFreq.indexOf(f))
+          if (idx.some(i => i < 0) || idx.some((v, i) => i && v < idx[i - 1])) erros.push(`coluna Frequência mal ordenada (${freqs.join(', ')})`)
           await p.locator('[data-tabela-carteira] th button', { hasText: /Valor atual/i }).click()
           const th0 = await p.locator('[data-tabela-carteira] th').first().boundingBox()
           await p.evaluate(() => window.scrollTo(0, document.querySelector('[data-tabela-carteira]').getBoundingClientRect().top + window.scrollY + 150))
@@ -348,6 +372,8 @@ if (extrato) {
           const nomes = await p.locator('[data-cartao-posicao] a[href*="acao/"], [data-cartao-posicao] .font-semibold:first-child').evaluateAll(r => r.length)
           if (!nomes) erros.push('cartões sem nome da ação')
           if (!(await p.locator('[data-totais-telemovel]').count())) erros.push('faltam os totais no telemóvel')
+          await p.getByLabel('Ordenar por').selectOption('c_freq')
+          if (!(await p.locator('[data-cartao-posicao] dt', { hasText: 'Frequência' }).count())) erros.push('os cartões não mostram a frequência')
         }
         await posicao.first().click()
         if (!(await p.locator('[data-detalhe-posicao]').count())) erros.push('clicar na posição não abriu os lotes')
