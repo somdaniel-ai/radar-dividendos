@@ -15,6 +15,7 @@ import { NIVEIS } from '../lib/calculos'
 import { AgruparPor, BarrasPeso } from '../componentes/Barras'
 import { EtiquetaNivel } from '../componentes/Nivel'
 import { MetaRendimento } from '../componentes/MetaRendimento'
+import { Projecao } from '../componentes/Projecao'
 
 const K_VALOR = 'radar.simulador.valor'
 const K_RASCUNHO = 'radar.simulador.rascunho'
@@ -461,13 +462,14 @@ function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void 
 const SEPARADORES = [
   { v: 'simulador', t: 'Simulador' },
   { v: 'meta', t: 'Meta de rendimento' },
+  { v: 'projecao', t: 'Projeção' },
 ] as const
 type Separador = (typeof SEPARADORES)[number]['v']
 
 export function Simular() {
   const { aCarregar, erro } = useApp()
   const [params, setParams] = useSearchParams()
-  const ver: Separador = params.get('ver') === 'meta' ? 'meta' : 'simulador'
+  const ver: Separador = SEPARADORES.find(s => s.v === params.get('ver'))?.v ?? 'simulador'
   const modo = params.get('modo') === 'distribuicao' ? 'distribuicao' : 'cada'
   const [r, setR] = useState<Rascunho>(() => ({ ...RASCUNHO_VAZIO, ...ler<Partial<Rascunho>>(K_RASCUNHO, {}) }))
   useEffect(() => gravar(K_RASCUNHO, r), [r])
@@ -506,7 +508,7 @@ export function Simular() {
           ))}
         </div>
       </div>
-      {ver === 'meta' ? <MetaRendimento abrirNoSimulador={abrirNoSimulador} /> : (
+      {ver === 'projecao' ? <Projecao /> : ver === 'meta' ? <MetaRendimento abrirNoSimulador={abrirNoSimulador} /> : (
         <>
           <div className="inline-flex rounded-xl bg-slate-100 p-1 text-sm dark:bg-slate-800" role="tablist" aria-label="Modo do simulador">
             {[['cada', 'Cada ação'], ['distribuicao', `Distribuição${r.linhas.length ? ` · ${r.linhas.length}` : ''}`]].map(([v, t]) => (

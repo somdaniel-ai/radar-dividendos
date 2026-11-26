@@ -158,6 +158,29 @@ await verificar('definicoes', '#/definicoes', {
 await verificar('sobre', '#/sobre', { espera: 'text=aconselhamento financeiro' })
 await verificar('carteira-vazia', '#/carteira', { espera: 'text=Importar o extrato da XTB' })
 
+// Projeção: valores à mão → mudar anos e reinvestir; gráficos e tabela
+for (const [nome, largura, altura] of [['projecao-pc', 1366, 900], ['projecao-telemovel', 390, 844]]) {
+  await verificar(nome, '#/simular?ver=projecao', {
+    largura, altura, espera: '[data-projecao]',
+    armazenamento: { 'radar.projecao': JSON.stringify({ fonte: 'manual', capital: 3500, yieldManual: 0.06, mensal: 100, anos: 10 }) },
+    extra: async (p, erros) => {
+      const fim = async () => p.locator('[data-projecao-fim]').innerText()
+      const antes = await fim()
+      await p.getByLabel('Durante').fill('20')
+      const depois = await fim()
+      if (antes === depois) erros.push('mudar os anos não mudou o resultado')
+      await p.getByText('Reinvestir os dividendos').click()
+      if ((await fim()) === depois) erros.push('desligar o reinvestimento não mudou o resultado')
+      if ((await p.locator('.recharts-surface').count()) < 2) erros.push('faltam os gráficos')
+      await p.getByRole('button', { name: 'Ver tabela' }).click()
+      if ((await p.locator('[data-tabela-projecao] tbody tr').count()) !== 21) erros.push('a tabela não tem os 20 anos + hoje')
+      const w = await p.evaluate(() => document.documentElement.scrollWidth)
+      if (w > largura) erros.push(`a página tem scroll para o lado (${w} > ${largura} px)`)
+      await p.screenshot({ path: `${PASTA}/${nome}-completa.png`, fullPage: true })
+    },
+  })
+}
+
 // Meta de rendimento → abrir a proposta no Simulador; Favoritos no Simulador
 const favs = radar.acoes.filter(a => !a.fora_batentes).slice(0, 3).map(a => a.ticker)
 for (const [nome, largura, altura] of [['meta-pc', 1366, 900], ['meta-telemovel', 390, 844]]) {
@@ -280,6 +303,12 @@ if (extrato) {
           const manuais = await p.evaluate(() => JSON.parse(localStorage.getItem('radar.carteira')).filter(t => t.id === 'manual-teste').length)
           if (manuais) erros.push('a compra escrita à mão continua guardada depois de importar')
         }
+        // Projeção a partir da carteira verdadeira
+        await p.goto(BASE + '#/simular?ver=projecao')
+        await p.waitForSelector('[data-projecao]')
+        await p.getByRole('radio', { name: '💼 A minha carteira' }).click()
+        if (!(await p.locator('text=A sua carteira hoje').count())) erros.push('a Projeção não usou a carteira como ponto de partida')
+        await p.screenshot({ path: `${PASTA}/${nome}-projecao.png`, fullPage: true })
         // Simulador → Distribuição: as ações da carteira mostram 💼 com o valor investido
         await p.goto(BASE + '#/simular')
         await p.waitForSelector('[data-simulador-cada]')
