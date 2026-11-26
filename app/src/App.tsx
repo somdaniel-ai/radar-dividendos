@@ -8,6 +8,7 @@ import { Radar } from './paginas/Radar'
 
 // páginas carregadas só quando são abertas (o Radar abre mais depressa no telemóvel)
 const Acao = lazy(() => import('./paginas/Acao').then(m => ({ default: m.Acao })))
+const Alertas = lazy(() => import('./paginas/Alertas').then(m => ({ default: m.Alertas })))
 const Calendario = lazy(() => import('./paginas/Calendario').then(m => ({ default: m.Calendario })))
 const Carteira = lazy(() => import('./paginas/Carteira').then(m => ({ default: m.Carteira })))
 const Definicoes = lazy(() => import('./paginas/Definicoes').then(m => ({ default: m.Definicoes })))
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="carteira" element={<Carteira />} />
               <Route path="simular" element={<Simular />} />
               <Route path="calendario" element={<Calendario />} />
+              <Route path="alertas" element={<Alertas />} />
               <Route path="acao/:ticker" element={<Acao />} />
               <Route path="definicoes" element={<Definicoes />} />
               <Route path="sobre" element={<Sobre />} />

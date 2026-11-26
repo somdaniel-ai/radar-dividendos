@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Carregando, Cartao, Erro, NOMES_CATEGORIA } from '../componentes/Comuns'
 import { Suspeitos } from '../componentes/Suspeitos'
 import { UniversoCartao } from '../componentes/UniversoCartao'
@@ -9,8 +9,9 @@ import type { ImpostoPais, Parametros } from '../tipos'
 import { EscolherColunas } from '../componentes/Colunas'
 import { CartaoConta } from '../componentes/Conta'
 import { useColunas } from '../lib/colunas'
+import { ALERTAS_PADRAO, TIPOS_ALERTA } from '../lib/alertas'
 
-type Tipo = 'pct' | 'num' | 'bool' | 'select'
+type Tipo = 'pct' | 'num' | 'bool' | 'select' | 'hora'
 
 function obter(obj: unknown, caminho: string): unknown {
   return caminho.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], obj)
@@ -44,7 +45,7 @@ function Campo({ caminho, rotulo, tipo, ajuda, opcoes, sufixo }: {
   const p = obter(padrao, caminho)
   const diferente = JSON.stringify(v) !== JSON.stringify(p)
   const textoPadrao = tipo === 'pct' ? `${numero((p as number) * 100, 2).replace(/,00$/, '')}%`
-    : tipo === 'bool' ? (p ? 'sim' : 'não') : tipo === 'select' ? opcoes?.find(o => o[0] === p)?.[1] : String(p)
+    : tipo === 'bool' ? (p ? 'sim' : 'não') : tipo === 'hora' ? String(p) : tipo === 'select' ? opcoes?.find(o => o[0] === p)?.[1] : String(p)
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800">
       <div className="min-w-0 flex-1">
@@ -62,6 +63,11 @@ function Campo({ caminho, rotulo, tipo, ajuda, opcoes, sufixo }: {
         )}
         {(tipo === 'pct' || tipo === 'num') && (
           <CampoNumero valor={v as number} pct={tipo === 'pct'} onMudar={n => alterar(caminho, n)} sufixo={sufixo} />
+        )}
+        {tipo === 'hora' && (
+          <input type="time" value={String(v ?? '')} aria-label={rotulo} step={60}
+            onChange={e => { if (/^\d{2}:\d{2}$/.test(e.target.value)) alterar(caminho, e.target.value) }}
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950" />
         )}
         {tipo === 'select' && (
           <select value={String(v)} onChange={e => alterar(caminho, e.target.value)} aria-label={rotulo}
@@ -150,6 +156,41 @@ function CategoriasPayout() {
   )
 }
 
+/** Cada tipo de alerta: ligado para a carteira e/ou para os favoritos. */
+function TiposAlerta() {
+  const { params, padrao, alterar } = useApp()
+  if (!params?.alertas) return null
+  const a = params.alertas as unknown as Record<string, { carteira: boolean; favoritos: boolean }>
+  const p = (padrao?.alertas ?? ALERTAS_PADRAO) as unknown as Record<string, { carteira: boolean; favoritos: boolean }>
+  return (
+    <table data-tipos-alerta className="mt-2 w-full text-sm">
+      <thead className="text-left text-xs text-slate-500">
+        <tr><th className="py-1 font-normal">Alerta</th><th className="w-20 text-center font-normal">💼 Carteira</th><th className="w-20 text-center font-normal">⭐ Favoritos</th></tr>
+      </thead>
+      <tbody>
+        {TIPOS_ALERTA.map(t => (
+          <tr key={t.id} className="border-t border-slate-100 dark:border-slate-800">
+            <td className="py-2 pr-2">
+              <div className="font-medium"><span aria-hidden>{t.emoji}</span> {t.nome}</div>
+              <div className="text-xs text-slate-500">{t.ajuda}</div>
+              {JSON.stringify(a[t.id]) !== JSON.stringify(p[t.id]) && (
+                <button type="button" className="text-xs text-sky-700 underline dark:text-sky-400" onClick={() => alterar(`alertas.${t.id}`, p[t.id])}>repor</button>
+              )}
+            </td>
+            {(['carteira', 'favoritos'] as const).map(onde => (
+              <td key={onde} className="text-center">
+                <input type="checkbox" className="size-5" checked={Boolean(a[t.id]?.[onde])}
+                  aria-label={`${t.nome} — ${onde === 'carteira' ? 'carteira' : 'favoritos'}`}
+                  onChange={e => alterar(`alertas.${t.id}.${onde}`, e.target.checked)} />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function SoLeitura({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
     <div className="flex justify-between gap-3 border-b border-slate-100 py-1.5 text-sm last:border-0 dark:border-slate-800">
@@ -159,7 +200,7 @@ function SoLeitura({ rotulo, valor }: { rotulo: string; valor: string }) {
 }
 
 export function Definicoes() {
-  const { params, padrao, aCarregar, erro, repor, personalizado, tema, setTema } = useApp()
+  const { params, padrao, aCarregar, erro, repor, personalizado, tema, setTema, sessao } = useApp()
   const { hash } = useLocation()
   const colunas = useColunas()
   useEffect(() => {
@@ -293,6 +334,22 @@ export function Definicoes() {
         <Campo caminho="meta.nivel_minimo" rotulo="Nível de consistência mínimo" tipo="num"
           ajuda="6 = dourado escuro · 5 = dourado claro · 4 = verde escuro · 3 = verde médio · 2 = verde claro · 1 = verde muito claro · 0 = todos." />
         <Campo caminho="meta.excluir_armadilhas" rotulo="Excluir ações com sinais de armadilha" tipo="bool" />
+      </Cartao>
+
+      <Cartao titulo={<span id="alertas">Alertas</span>}>
+        <p className="mb-1 text-xs text-slate-500">
+          Para as ações da carteira e dos favoritos. O motor procura novidades todas as noites e junta-as numa só mensagem
+          do Telegram por dia, à hora escolhida; aparecem também na página <Link to="/alertas" className="text-sky-700 underline dark:text-sky-400">🔔 Alertas</Link>.
+          As mudanças valem a partir da noite seguinte{sessao ? '' : ' e só depois de entrar com o GitHub (as escolhas ficam na sua conta)'}.
+        </p>
+        <Campo caminho="alertas.telegram" rotulo="Enviar pelo Telegram" tipo="bool" />
+        <Campo caminho="alertas.hora_envio" rotulo="Hora da mensagem diária (Lisboa)" tipo="hora"
+          ajuda="Pode chegar alguns minutos depois (o GitHub às vezes atrasa as tarefas agendadas). Os alertas que aparecerem durante o dia esperam pela hora do dia seguinte." />
+        <Campo caminho="alertas.valores_em_euros" rotulo="Mostrar valores em euros" tipo="bool"
+          ajuda="Preços e dividendos em €, com a moeda original entre parênteses, e quanto vai receber nas ações da carteira. Desligado: só na moeda original e sem os valores da carteira." />
+        <Campo caminho="alertas.yield_limite" rotulo="Limite do alerta «yield alto» (líquido)" tipo="pct" />
+        <Campo caminho="alertas.falha_atualizacao" rotulo="Avisar quando a atualização noturna falhar" tipo="bool" />
+        <TiposAlerta />
       </Cartao>
 
       <Cartao titulo="Motor de dados (só leitura)">

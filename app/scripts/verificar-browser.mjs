@@ -170,6 +170,29 @@ await verificar('definicoes', '#/definicoes', {
     await p.waitForSelector('section:has(#universo) >> text=Fora do universo', { timeout: 10000 }).catch(() => erros.push('cartão Universo não respondeu'))
   },
 })
+// Alertas: sem sessão pede para entrar; nas Definições, as escolhas ficam guardadas
+await verificar('alertas-sem-sessao', '#/alertas', { espera: 'text=Entre com o GitHub para os ver' })
+for (const [nome, largura, altura] of [['definicoes-alertas-pc', 1366, 900], ['definicoes-alertas-telemovel', 390, 844]]) {
+  await verificar(nome, '#/definicoes#alertas', {
+    largura, altura, espera: '[data-tipos-alerta]',
+    extra: async (p, erros) => {
+      if ((await p.locator('[data-tipos-alerta] tbody tr').count()) !== 6) erros.push('faltam tipos de alerta')
+      const campo = p.locator('[id="alertas.yield_limite"] input')
+      if ((await campo.inputValue()) !== '10') erros.push(`limite do yield por defeito: ${await campo.inputValue()}`)
+      await campo.fill('12'); await campo.press('Enter')
+      await p.getByLabel('Véspera da data ex-dividendo — favoritos').uncheck()
+      await p.getByLabel('Hora da mensagem diária (Lisboa)').fill('09:15')
+      const guardado = await p.evaluate(() => JSON.parse(localStorage.getItem('radar.definicoes') || '{}'))
+      const al = guardado.alertas ?? {}
+      if (al.yield_limite !== 0.12 || al.vespera_ex?.favoritos !== false || al.hora_envio !== '09:15')
+        erros.push(`escolhas não guardadas: ${JSON.stringify(al)}`)
+      const w = await p.evaluate(() => document.documentElement.scrollWidth)
+      if (w > largura) erros.push(`a página tem scroll para o lado (${w} > ${largura} px)`)
+      await p.locator('#alertas').scrollIntoViewIfNeeded()
+      await p.screenshot({ path: `${PASTA}/${nome}-cartao.png` })
+    },
+  })
+}
 await verificar('sobre', '#/sobre', { espera: 'text=aconselhamento financeiro' })
 await verificar('carteira-vazia', '#/carteira', { espera: 'text=Importar o extrato da XTB' })
 

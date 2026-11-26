@@ -115,6 +115,21 @@ PARAMETROS_PADRAO: dict = {
         "nivel_minimo": 3,  # nível de consistência mínimo (3 = verde médio)
         "excluir_armadilhas": True,
     },
+    # Fase 6 — Alertas (Telegram + app), para as ações da carteira e dos favoritos.
+    # Cada tipo pode valer para a carteira e/ou para os favoritos (os dois desligados = desligado).
+    "alertas": {
+        "telegram": True,  # enviar pelo Telegram (na app aparecem sempre)
+        "hora_envio": "08:30",  # hora de Lisboa da mensagem diária
+        "valores_em_euros": True,  # valores em € (com a moeda original entre parênteses)
+        "yield_limite": 0.10,  # alerta "yield acima de X%" (líquido)
+        "abaixo_justo": {"carteira": True, "favoritos": True},
+        "dividendo": {"carteira": True, "favoritos": True},  # aumento ou corte
+        "atrasado": {"carteira": True, "favoritos": True},
+        "yield_alto": {"carteira": True, "favoritos": True},
+        "nova_ex": {"carteira": True, "favoritos": True},
+        "vespera_ex": {"carteira": True, "favoritos": True},  # último dia para comprar
+        "falha_atualizacao": True,
+    },
 }
 
 

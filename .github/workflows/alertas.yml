@@ -1,0 +1,53 @@
+# Envia os alertas do Radar de Dividendos pelo Telegram.
+# Corre de hora a hora (à meia hora); o programa só envia quando chega a hora escolhida nas
+# Definições (por defeito 08:30 de Lisboa) e só uma vez por dia. Demora poucos segundos.
+#
+# A pedido (separador Actions → "Enviar alertas" → Run workflow):
+#   - "teste": mensagem de teste (confirma os segredos, o Supabase e o bot; não marca nada);
+#   - "agora": envia já os alertas que estiverem por enviar.
+#
+# Segredos: SUPABASE_CHAVE_MOTOR, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID. O registo desta tarefa é
+# público (o repositório é público): o programa só escreve contagens, nunca tickers nem valores.
+name: Enviar alertas
+
+on:
+  schedule:
+    - cron: "30 * * * *"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "teste = mensagem de teste; agora = enviar já o que estiver por enviar"
+        type: choice
+        options: [teste, agora]
+        default: teste
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alertas
+  cancel-in-progress: false
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: pipeline/radar
+
+      # só a biblioteca padrão do Python (já instalado no GitHub): não instala nada
+      - name: Enviar
+        working-directory: pipeline
+        env:
+          SUPABASE_CHAVE_MOTOR: ${{ secrets.SUPABASE_CHAVE_MOTOR }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MODO: ${{ github.event_name == 'workflow_dispatch' && inputs.modo || 'diario' }}
+        run: |
+          case "$MODO" in
+            teste) python3 -m radar.telegram --teste ;;
+            agora) python3 -m radar.telegram --agora ;;
+            *)     python3 -m radar.telegram ;;
+          esac

@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 
+from . import alertas as al
 from . import decisoes as dec
 from . import universo as uni
 from . import xtb
@@ -229,6 +230,9 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     antigas = antigo_meta.get("decisoes_conta", {}).get("assinaturas", {})
     novas_ass = dec.assinaturas(conta) if conta is not None else antigas
     decisoes_mudaram = dec.mudaram(antigas, novas_ass) & no_universo
+    # alertas: carteira (ticker + quantidade), favoritos e escolhas — só com a chave do motor
+    ctx_alertas = al.ler_contexto()
+    do_interesse = al.interesse(ctx_alertas) & no_universo
 
     if tickers:
         pedidos = {t.upper() for t in tickers}
@@ -240,9 +244,11 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     else:
         itens = triagem.ordem(todos, hoje, {t: a.get("atualizado_em", "") for t, a in antigo_radar.items()})
         # ações com decisões novas na app vão à frente (para a mudança aparecer já esta noite)
-        if decisoes_mudaram:
-            frente = [i for i in todos if i["ticker_xtb"] in decisoes_mudaram]
-            itens = frente + [i for i in itens if i["ticker_xtb"] not in decisoes_mudaram]
+        # e as da carteira e dos favoritos também (os alertas usam dados desta noite)
+        primeiro = decisoes_mudaram | do_interesse
+        if primeiro:
+            frente = [i for i in todos if i["ticker_xtb"] in decisoes_mudaram] +                      [i for i in todos if i["ticker_xtb"] in do_interesse - decisoes_mudaram]
+            itens = frente + [i for i in itens if i["ticker_xtb"] not in primeiro]
     agendados = len(itens)
     prazo = None if (tickers or limite) else inicio + (minutos if minutos is not None else _minutos_dados()) * 60
 
@@ -427,6 +433,13 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
     meta["termos_sem_traducao"] = termos.relatorio()
     _escrever(saida / "extraordinarios_suspeitos.json", {"gerado_em": meta["gerado_em"], "suspeitos": suspeitos})
     _escrever(saida / "radar.json", {"gerado_em": meta["gerado_em"], "acoes": resumos})
+    # alertas da carteira e dos favoritos (no registo só contagens: o repositório é público)
+    if ctx_alertas is not None:
+        itens_alerta = al.calcular({r["ticker"]: r for r in resumos}, antigo_radar, ctx_alertas, hoje,
+                                   p["pagamentos"]["tolerancia_igual"])
+        novos_alertas = al.registar(itens_alerta)
+        log.info("Alertas: %s calculados, %s novos", len(itens_alerta), novos_alertas if novos_alertas is not None else "?")
+        meta["alertas"] = {"calculados": len(itens_alerta), "novos": novos_alertas}
     # estado de cada instrumento do universo (para o ecrã "Universo" da app)
     no_radar = {r["ticker"] for r in resumos}
     _escrever(saida / "universo.json", {"gerado_em": meta["gerado_em"], "instrumentos": {

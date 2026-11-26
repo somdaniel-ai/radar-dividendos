@@ -46,7 +46,10 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/publicar.yml/enable" && echo "Tarefa mantida ativa"
+        run: |
+          for w in publicar.yml alertas.yml; do
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$w/enable" && echo "Tarefa $w mantida ativa"
+          done
 
       # O plano gratuito do Supabase pausa projetos sem atividade durante 1 semana. Todas as
       # noites chama-se a função ping() (só devolve "ok", não lê dados de ninguém), com a
@@ -171,6 +174,16 @@ jobs:
       - name: Verificar a app num browser
         working-directory: app
         run: npm run verificar
+
+      # se a atualização noturna (ou a pedido) falhar, guarda um alerta "a atualização falhou",
+      # que vai na próxima mensagem do Telegram (só biblioteca padrão do Python)
+      - name: Avisar (alertas/Telegram) que a atualização falhou
+        if: failure() && github.event_name != 'push'
+        continue-on-error: true
+        working-directory: pipeline
+        env:
+          SUPABASE_CHAVE_MOTOR: ${{ secrets.SUPABASE_CHAVE_MOTOR }}
+        run: python3 -m radar.telegram --falha "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
       - uses: actions/upload-pages-artifact@v3
         with:

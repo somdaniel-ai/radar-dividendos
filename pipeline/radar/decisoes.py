@@ -16,9 +16,8 @@ import requests
 
 log = logging.getLogger(__name__)
 
-SUPABASE_URL = "https://mimdxffecbctnzhskjwh.supabase.co"
 # chave PUBLICÁVEL (pública, a mesma da app). Nunca pôr aqui a chave secreta.
-SUPABASE_CHAVE_PUBLICA = "sb_publishable_UiTkJf1X_KLJgVceus7S5A_9d-RK3sy"
+from .supabase_config import SUPABASE_CHAVE_PUBLICA, SUPABASE_URL  # noqa: E402
 
 
 def ler_da_conta(chave_motor: str | None = None, sessao=requests) -> list[dict] | None:

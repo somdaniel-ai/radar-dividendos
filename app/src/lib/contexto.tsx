@@ -5,6 +5,7 @@ import { apagar, gravar, ler } from './armazenamento'
 import { recalcular, type AcaoCalculada } from './calculos'
 import { CHAVE_COLUNAS, lerColunas } from './colunas'
 import { lerMeta, lerPadrao, lerRadar } from './dados'
+import { ALERTAS_PADRAO } from './alertas'
 import { META_PADRAO } from './meta'
 import type { Transacao } from './extrato'
 import {
@@ -133,7 +134,7 @@ function definirEm(obj: Record<string, unknown>, caminho: string, valor: unknown
 /** Parâmetros novos que podem ainda não existir no definicoes_padrao.json publicado
  *  (o site e os dados são publicados juntos, mas uma cópia antiga pode estar em cache). */
 function comNovidades(p: Parametros): Parametros {
-  return { ...p, meta: { ...META_PADRAO, ...(p.meta ?? {}) } }
+  return { ...p, meta: { ...META_PADRAO, ...(p.meta ?? {}) }, alertas: fundir(ALERTAS_PADRAO, p.alertas) }
 }
 
 const mensagemErro = (e: unknown) => (e instanceof Error ? e.message : String(e))

@@ -253,4 +253,5 @@ export interface Parametros {
   }
   simulador: { investimento_padrao: number }
   meta: { rendimento_mensal_padrao: number; max_empresa: number; max_setor: number; nivel_minimo: number; excluir_armadilhas: boolean }
+  alertas: import('./lib/alertas').EscolhasAlertas
 }

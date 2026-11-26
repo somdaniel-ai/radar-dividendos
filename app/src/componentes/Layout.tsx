@@ -6,6 +6,7 @@ import { saudeAtualizacao } from '../lib/saude'
 import { AVISO_LEGAL } from './Comuns'
 import { BotaoConta } from './Conta'
 import { RedeSeguranca } from './RedeSeguranca'
+import { SinoAlertas } from './Sino'
 
 const LINKS = [
   { para: '/', texto: 'Radar', icone: '📡' },
@@ -60,6 +61,7 @@ export function Layout() {
               Atualizado: {dataHora(meta.gerado_em)}
             </span>
           )}
+            <SinoAlertas />
             <BotaoConta />
           </div>
         </div>
