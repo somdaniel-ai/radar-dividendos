@@ -252,4 +252,5 @@ export interface Parametros {
     penalizacao_por_armadilha: number
   }
   simulador: { investimento_padrao: number }
+  meta: { rendimento_mensal_padrao: number; max_empresa: number; max_setor: number; nivel_minimo: number; excluir_armadilhas: boolean }
 }

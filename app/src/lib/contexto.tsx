@@ -5,6 +5,7 @@ import { apagar, gravar, ler } from './armazenamento'
 import { recalcular, type AcaoCalculada } from './calculos'
 import { CHAVE_COLUNAS, lerColunas } from './colunas'
 import { lerMeta, lerPadrao, lerRadar } from './dados'
+import { META_PADRAO } from './meta'
 import type { Transacao } from './extrato'
 import {
   backendSupabase, juntarDados, operacoesCarteira, operacoesPara, processarFila,
@@ -129,6 +130,12 @@ function definirEm(obj: Record<string, unknown>, caminho: string, valor: unknown
   return copia
 }
 
+/** Parâmetros novos que podem ainda não existir no definicoes_padrao.json publicado
+ *  (o site e os dados são publicados juntos, mas uma cópia antiga pode estar em cache). */
+function comNovidades(p: Parametros): Parametros {
+  return { ...p, meta: { ...META_PADRAO, ...(p.meta ?? {}) } }
+}
+
 const mensagemErro = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 export function ProvedorApp({ children }: { children: ReactNode }) {
@@ -148,7 +155,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     Promise.all([lerRadar(), lerMeta(), lerPadrao()])
-      .then(([r, m, p]) => { setRadar(r.acoes); setMeta(m); setPadrao(p) })
+      .then(([r, m, p]) => { setRadar(r.acoes); setMeta(m); setPadrao(comNovidades(p)) })
       .catch(e => setErro(String(e.message ?? e)))
   }, [])
 

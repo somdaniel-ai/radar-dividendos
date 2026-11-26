@@ -83,6 +83,11 @@ describe('páginas', () => {
     expect(html).toContain('data-simulador-cada')
     expect(html).toContain('WU.US')
     expect(html).toContain('+ Distribuição')
+    expect(html).toMatch(/⭐ Favoritos<!-- --> · 1/)
+    expect(html).toMatch(/💼 Carteira<!-- --> · 1/)
+    const meta = renderToString(<ContextoApp.Provider value={ctx}><MemoryRouter initialEntries={['/simular?ver=meta']}><Simular /></MemoryRouter></ContextoApp.Provider>)
+    expect(meta).toContain('data-meta-rendimento')
+    expect(meta).toContain('Não é aconselhamento financeiro')
     const guardado: Record<string, string> = {
       'radar.simulador.rascunho': JSON.stringify({ id: null, nome: 'Teste', valor: 1000, linhas: [{ ticker: 'WU.US', pct: 60 }, { ticker: 'KO.US', pct: 30 }] }),
     }
@@ -93,6 +98,8 @@ describe('páginas', () => {
       expect(d).toContain('data-simulador-distribuicao')
       expect(d).toMatch(/Soma: <!-- -->90(,00)?<!-- -->%.*faltam 10(,00)?%/)
       expect(d).toContain('Só pode guardar quando as percentagens somarem 100%')
+      expect(d).toMatch(/⭐ Favoritos · <!-- -->1/)
+      expect(d).toContain('Adicionar todos os favoritos')
     } finally {
       globalThis.localStorage = antes
     }

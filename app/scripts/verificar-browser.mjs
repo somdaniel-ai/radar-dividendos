@@ -158,6 +158,39 @@ await verificar('definicoes', '#/definicoes', {
 await verificar('sobre', '#/sobre', { espera: 'text=aconselhamento financeiro' })
 await verificar('carteira-vazia', '#/carteira', { espera: 'text=Importar o extrato da XTB' })
 
+// Meta de rendimento → abrir a proposta no Simulador; Favoritos no Simulador
+const favs = radar.acoes.filter(a => !a.fora_batentes).slice(0, 3).map(a => a.ticker)
+for (const [nome, largura, altura] of [['meta-pc', 1366, 900], ['meta-telemovel', 390, 844]]) {
+  await verificar(nome, '#/simular?ver=meta', {
+    largura, altura, espera: '[data-meta-rendimento]',
+    armazenamento: { 'radar.favoritos': JSON.stringify(favs) },
+    extra: async (p, erros) => {
+      const semScroll = async onde => {
+        const w = await p.evaluate(() => document.documentElement.scrollWidth)
+        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px)`)
+      }
+      await p.getByLabel('Rendimento mensal líquido pretendido').fill('250')
+      if (!(await p.locator('text=Capital necessário').count())) { erros.push('a meta não encontrou uma distribuição'); return }
+      await semScroll('meta')
+      await p.screenshot({ path: `${PASTA}/${nome}-resultado.png`, fullPage: true })
+      await p.getByRole('button', { name: 'Abrir no Simulador (Distribuição)' }).click()
+      await p.waitForSelector('[data-simulador-distribuicao]')
+      const soma = await p.locator('[data-soma-pct]').innerText()
+      if (!soma.includes('✓')) erros.push(`a proposta aberta no Simulador não soma 100% (${soma})`)
+      // ⭐ Favoritos: separador no modo "Cada ação" e "Adicionar todos" na Distribuição
+      await p.getByRole('button', { name: /Adicionar todos os favoritos/ }).click()
+      const soma2 = await p.locator('[data-soma-pct]').innerText()
+      if (!soma2.includes('✓')) erros.push(`depois de juntar os favoritos não soma 100% (${soma2})`)
+      await p.getByRole('tab', { name: 'Cada ação' }).click()
+      await p.getByRole('tab', { name: `⭐ Favoritos · ${favs.length}` }).click()
+      const linhas = await p.locator(largura > 700 ? '[data-simulador-cada] tbody tr' : '[data-simulador-cada] ul > li').count()
+      if (linhas !== favs.length) erros.push(`separador Favoritos: ${linhas} linhas em vez de ${favs.length}`)
+      await semScroll('favoritos')
+      await p.screenshot({ path: `${PASTA}/${nome}-favoritos.png`, fullPage: true })
+    },
+  })
+}
+
 // Simulador: cada ação → juntar 2 ações à distribuição → partes iguais → guardar um cenário
 for (const [nome, largura, altura] of [['simular-pc', 1366, 900], ['simular-telemovel', 390, 844]]) {
   await verificar(nome, '#/simular', {

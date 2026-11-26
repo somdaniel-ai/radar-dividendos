@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AVISO_LEGAL, Carregando, Cartao, Erro, EtiquetaCategoria, NOMES_CATEGORIA } from '../componentes/Comuns'
+import { AVISO_LEGAL, Carregando, Cartao, Erro, EtiquetaCategoria } from '../componentes/Comuns'
 import { TextoSync } from '../componentes/Conta'
 import { gravar, ler } from '../lib/armazenamento'
 import type { AcaoCalculada } from '../lib/calculos'
@@ -8,6 +8,7 @@ import { useApp } from '../lib/contexto'
 import { euros, numero, pct } from '../lib/formato'
 import type { Cenario } from '../lib/sincronizar'
 import { distribuir, lerNumero, partesIguais, simular } from '../lib/simulador'
+import { MetaRendimento } from '../componentes/MetaRendimento'
 
 const K_VALOR = 'radar.simulador.valor'
 const K_RASCUNHO = 'radar.simulador.rascunho'
@@ -67,9 +68,26 @@ const ORDENS = {
   nome: { t: 'Nome', f: (a: AcaoCalculada) => a.nome },
 } as const
 
+/** Separadores do modo "Cada ação": categorias + ⭐ Favoritos + 💼 Carteira. */
+const GRUPOS = [
+  { v: '', t: 'Todas' }, { v: 'EMPRESA', t: 'Empresas' }, { v: 'REIT', t: 'REIT' }, { v: 'BDC', t: 'BDC' },
+  { v: 'CEF', t: 'Fundos fechados' }, { v: 'ETF', t: 'ETF' }, { v: 'FAVORITOS', t: '⭐ Favoritos' }, { v: 'CARTEIRA', t: '💼 Carteira' },
+] as const
+
+function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" role="tab" aria-selected={ativo} onClick={onClick}
+      className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium ${ativo
+        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+        : 'bg-white text-slate-700 ring-1 ring-slate-300 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700'}`}>
+      {children}
+    </button>
+  )
+}
+
 function CadaAcao({ juntar, naDistribuicao }: { juntar: (t: string) => void; naDistribuicao: Set<string> }) {
-  const { acoes, naCarteira, params } = useApp()
-  const [valor, setValor] = useState<number>(() => ler(K_VALOR, 100))
+  const { acoes, naCarteira, favoritos, params } = useApp()
+  const [valor, setValor] = useState<number>(() => ler(K_VALOR, params?.simulador.investimento_padrao ?? 100))
   const [texto, setTexto] = useState('')
   const [categoria, setCategoria] = useState('')
   const [ordem, setOrdem] = useState<keyof typeof ORDENS>('pontos')
@@ -77,17 +95,22 @@ function CadaAcao({ juntar, naDistribuicao }: { juntar: (t: string) => void; naD
   const [mostrar, setMostrar] = useState(50)
   useEffect(() => gravar(K_VALOR, valor), [valor])
 
+  const noGrupo = useCallback((a: AcaoCalculada, g: string) =>
+    !g || (g === 'CARTEIRA' ? naCarteira.has(a.ticker) : g === 'FAVORITOS' ? favoritos.has(a.ticker) : a.categoria === g),
+  [naCarteira, favoritos])
+  const simulaveis = useMemo(() => acoes.filter(a => a.preco_eur && a.dividendo.anual_eur != null), [acoes])
+
   const lista = useMemo(() => {
     const t = texto.trim().toLowerCase()
-    const f = acoes.filter(a => (!t || `${a.ticker} ${a.nome}`.toLowerCase().includes(t))
-      && (!categoria || (categoria === 'CARTEIRA' ? naCarteira.has(a.ticker) : a.categoria === categoria))
-      && a.preco_eur && a.dividendo.anual_eur != null
-      // como no Radar: yields fora dos limites costumam ser erros nos dados ou cortes por anunciar
-      && (verForaLimites || !a.fora_batentes || (categoria === 'CARTEIRA' && naCarteira.has(a.ticker))))
+    // como no Radar: yields fora dos limites costumam ser erros nos dados ou cortes por anunciar
+    // (nas suas listas, Carteira e Favoritos, mostra-se sempre tudo)
+    const pessoal = categoria === 'CARTEIRA' || categoria === 'FAVORITOS'
+    const f = simulaveis.filter(a => (!t || `${a.ticker} ${a.nome}`.toLowerCase().includes(t))
+      && noGrupo(a, categoria) && (verForaLimites || pessoal || !a.fora_batentes))
     const k = ORDENS[ordem].f
     return f.map(a => ({ a, s: simular(a, valor)! }))
       .sort((x, y) => { const p = k(x.a), q = k(y.a); return typeof p === 'string' ? p.localeCompare(q as string, 'pt') : (p as number) - (q as number) })
-  }, [acoes, texto, categoria, ordem, valor, naCarteira, verForaLimites])
+  }, [simulaveis, texto, categoria, ordem, valor, noGrupo, verForaLimites])
 
   return (
     <div className="space-y-3" data-simulador-cada>
@@ -97,15 +120,6 @@ function CadaAcao({ juntar, naDistribuicao }: { juntar: (t: string) => void; naD
           <input type="search" placeholder="Pesquisar ticker ou nome…" value={texto} onChange={e => setTexto(e.target.value)}
             className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-base dark:border-slate-700 dark:bg-slate-950" />
           <label className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500">Mostrar</span>
-            <select value={categoria} onChange={e => setCategoria(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-950">
-              <option value="">Todas</option>
-              {Object.entries(NOMES_CATEGORIA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              <option value="CARTEIRA">💼 Carteira</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Ordenar por</span>
             <select value={ordem} onChange={e => setOrdem(e.target.value as keyof typeof ORDENS)}
               className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-950">
@@ -113,6 +127,16 @@ function CadaAcao({ juntar, naDistribuicao }: { juntar: (t: string) => void; naD
             </select>
           </label>
         </div>
+        <div className="-mx-1 mt-3 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Mostrar">
+          {GRUPOS.map(g => {
+            const n = g.v ? simulaveis.filter(a => noGrupo(a, g.v)).length : null
+            if (g.v && n === 0 && categoria !== g.v && g.v !== 'FAVORITOS') return null
+            return <Chip key={g.v} ativo={categoria === g.v} onClick={() => setCategoria(g.v)}>{g.t}{n != null ? ` · ${n}` : ''}</Chip>
+          })}
+        </div>
+        {categoria === 'FAVORITOS' && favoritos.size === 0 && (
+          <p className="mt-2 text-sm text-slate-500">Ainda não marcou favoritos: toque na ☆ de uma ação no Radar.</p>
+        )}
         <p className="mt-2 text-xs text-slate-500">
           Quantas ações compraria com {euros(valor)} (frações permitidas) e quanto receberia de dividendos, com o dividendo anual e
           o imposto das suas <Link to="/definicoes" className="underline">Definições</Link>. {lista.length} ações.
@@ -199,16 +223,26 @@ function BotaoJuntar({ ativo, onClick }: { ativo: boolean; onClick: () => void }
 // ——— modo "distribuição" ———
 
 function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void }) {
-  const { acoes, cenarios, gravarCenario, sessao } = useApp()
+  const { acoes, cenarios, gravarCenario, sessao, favoritos } = useApp()
   const [procura, setProcura] = useState('')
+  const [soFavoritos, setSoFavoritos] = useState(false)
   const [guardado, setGuardado] = useState<string | null>(null)
   const res = useMemo(() => distribuir(r.linhas, r.valor, acoes), [r.linhas, r.valor, acoes])
+  const ja = useMemo(() => new Set(r.linhas.map(l => l.ticker)), [r.linhas])
+  const favDisponiveis = useMemo(() => acoes.filter(a => favoritos.has(a.ticker) && !ja.has(a.ticker)), [acoes, favoritos, ja])
   const sugestoes = useMemo(() => {
     const t = procura.trim().toLowerCase()
-    if (t.length < 2) return []
-    const ja = new Set(r.linhas.map(l => l.ticker))
-    return acoes.filter(a => !ja.has(a.ticker) && `${a.ticker} ${a.nome}`.toLowerCase().includes(t)).slice(0, 8)
-  }, [procura, acoes, r.linhas])
+    // com "⭐ Favoritos" ligado mostra logo os favoritos (a pesquisa filtra dentro deles)
+    if (!soFavoritos && t.length < 2) return []
+    const base = soFavoritos ? favDisponiveis : acoes.filter(a => !ja.has(a.ticker))
+    return base.filter(a => !t || `${a.ticker} ${a.nome}`.toLowerCase().includes(t)).slice(0, soFavoritos ? 50 : 8)
+  }, [procura, acoes, ja, soFavoritos, favDisponiveis])
+  const juntarFavoritos = () => {
+    const novos = [...r.linhas, ...favDisponiveis.map(a => ({ ticker: a.ticker, pct: 0 }))]
+    const p = partesIguais(novos.length)
+    mudar({ ...r, linhas: novos.map((l, i) => ({ ...l, pct: p[i] })) })
+    setSoFavoritos(false)
+  }
 
   const juntar = (t: string) => {
     if (r.linhas.some(l => l.ticker === t)) return
@@ -257,7 +291,19 @@ function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void 
         </div>
         <p className="mt-2 text-xs text-slate-500">
           Escolha as ações e a percentagem de cada uma (têm de somar 100%). Também pode juntar ações no modo <b>Cada ação</b>.
+          «Adicionar todos os favoritos» junta os que faltam e reparte 100% em partes iguais.
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2" role="tablist" aria-label="Procurar em">
+          <Chip ativo={!soFavoritos} onClick={() => setSoFavoritos(false)}>Todas</Chip>
+          <Chip ativo={soFavoritos} onClick={() => setSoFavoritos(true)}>⭐ Favoritos · {favoritos.size}</Chip>
+          <button type="button" disabled={!favDisponiveis.length} onClick={juntarFavoritos}
+            className="rounded-lg px-3 py-1 text-sm font-medium text-sky-700 ring-1 ring-sky-300 disabled:text-slate-400 disabled:ring-slate-200 dark:text-sky-400 dark:ring-sky-800 dark:disabled:ring-slate-800">
+            Adicionar todos os favoritos{favDisponiveis.length ? ` (${favDisponiveis.length})` : ''}
+          </button>
+        </div>
+        {soFavoritos && favoritos.size === 0 && (
+          <p className="mt-2 text-sm text-slate-500">Ainda não marcou favoritos: toque na ☆ de uma ação no Radar.</p>
+        )}
       </Cartao>
 
       {r.linhas.length === 0 ? (
@@ -360,16 +406,24 @@ function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void 
 
 const SEPARADORES = [
   { v: 'simulador', t: 'Simulador' },
+  { v: 'meta', t: 'Meta de rendimento' },
 ] as const
+type Separador = (typeof SEPARADORES)[number]['v']
 
 export function Simular() {
   const { aCarregar, erro } = useApp()
   const [params, setParams] = useSearchParams()
+  const ver: Separador = params.get('ver') === 'meta' ? 'meta' : 'simulador'
   const modo = params.get('modo') === 'distribuicao' ? 'distribuicao' : 'cada'
   const [r, setR] = useState<Rascunho>(() => ({ ...RASCUNHO_VAZIO, ...ler<Partial<Rascunho>>(K_RASCUNHO, {}) }))
   useEffect(() => gravar(K_RASCUNHO, r), [r])
   const naDistribuicao = useMemo(() => new Set(r.linhas.map(l => l.ticker)), [r.linhas])
-  const irPara = (m: string) => setParams(p => { const n = new URLSearchParams(p); if (m === 'cada') n.delete('modo'); else n.set('modo', m); return n }, { replace: true })
+  const mudarUrl = (o: { ver?: Separador; modo?: string }) => setParams(p => {
+    const n = new URLSearchParams(p)
+    if (o.ver) { if (o.ver === 'simulador') n.delete('ver'); else n.set('ver', o.ver) }
+    if (o.modo) { if (o.modo === 'cada') n.delete('modo'); else n.set('modo', o.modo) }
+    return n
+  }, { replace: true })
 
   if (erro) return <Erro texto={erro} />
   if (aCarregar) return <Carregando />
@@ -379,28 +433,40 @@ export function Simular() {
     const soma = r.linhas.reduce((s, l) => s + l.pct, 0)
     setR({ ...r, linhas: [...r.linhas, { ticker: t, pct: Math.max(0, Math.round((100 - soma) * 100) / 100) }] })
   }
+  const abrirNoSimulador = (valor: number, linhas: Linha[], nome: string) => {
+    if (r.linhas.length && !confirm('Substituir a distribuição que está aberta no Simulador?')) return
+    setR({ id: null, nome, valor, linhas })
+    mudarUrl({ ver: 'simulador', modo: 'distribuicao' })
+  }
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold">Simular</h1>
-        <div className="mt-2 flex gap-1.5" role="tablist" aria-label="Ferramenta">
+        <div className="mt-2 flex flex-wrap gap-1.5" role="tablist" aria-label="Ferramenta">
           {SEPARADORES.map(s => (
-            <span key={s.v} role="tab" aria-selected className="rounded-full bg-slate-900 px-3 py-1 text-sm font-medium text-white dark:bg-white dark:text-slate-900">{s.t}</span>
+            <button key={s.v} type="button" role="tab" aria-selected={ver === s.v} onClick={() => mudarUrl({ ver: s.v })}
+              className={`rounded-full px-3 py-1 text-sm font-medium ${ver === s.v
+                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                : 'bg-white text-slate-700 ring-1 ring-slate-300 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700'}`}>{s.t}</button>
           ))}
         </div>
       </div>
-      <div className="inline-flex rounded-xl bg-slate-100 p-1 text-sm dark:bg-slate-800" role="tablist" aria-label="Modo do simulador">
-        {[['cada', 'Cada ação'], ['distribuicao', `Distribuição${r.linhas.length ? ` · ${r.linhas.length}` : ''}`]].map(([v, t]) => (
-          <button key={v} type="button" role="tab" aria-selected={modo === v} onClick={() => irPara(v)}
-            className={`rounded-lg px-3 py-1.5 font-medium ${modo === v ? 'bg-white shadow-sm dark:bg-slate-950' : 'text-slate-600 dark:text-slate-300'}`}>{t}</button>
-        ))}
-      </div>
-      {modo === 'cada' ? <CadaAcao juntar={juntarDeCada} naDistribuicao={naDistribuicao} /> : <Distribuicao r={r} mudar={setR} />}
-      <p className="text-xs text-slate-500">
-        Estimativas com o dividendo dos últimos pagamentos: os dividendos futuros podem ser diferentes (cortes, aumentos, câmbio).
-        Não inclui comissões. {AVISO_LEGAL}
-      </p>
+      {ver === 'meta' ? <MetaRendimento abrirNoSimulador={abrirNoSimulador} /> : (
+        <>
+          <div className="inline-flex rounded-xl bg-slate-100 p-1 text-sm dark:bg-slate-800" role="tablist" aria-label="Modo do simulador">
+            {[['cada', 'Cada ação'], ['distribuicao', `Distribuição${r.linhas.length ? ` · ${r.linhas.length}` : ''}`]].map(([v, t]) => (
+              <button key={v} type="button" role="tab" aria-selected={modo === v} onClick={() => mudarUrl({ modo: v })}
+                className={`rounded-lg px-3 py-1.5 font-medium ${modo === v ? 'bg-white shadow-sm dark:bg-slate-950' : 'text-slate-600 dark:text-slate-300'}`}>{t}</button>
+            ))}
+          </div>
+          {modo === 'cada' ? <CadaAcao juntar={juntarDeCada} naDistribuicao={naDistribuicao} /> : <Distribuicao r={r} mudar={setR} />}
+          <p className="text-xs text-slate-500">
+            Estimativas com o dividendo dos últimos pagamentos: os dividendos futuros podem ser diferentes (cortes, aumentos, câmbio).
+            Não inclui comissões. {AVISO_LEGAL}
+          </p>
+        </>
+      )}
     </div>
   )
 }

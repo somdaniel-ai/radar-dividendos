@@ -107,6 +107,14 @@ PARAMETROS_PADRAO: dict = {
     "simulador": {
         "investimento_padrao": 100.0,
     },
+    # 7.5 Meta de rendimento (procura automática de uma distribuição)
+    "meta": {
+        "rendimento_mensal_padrao": 100.0,  # € líquidos por mês
+        "max_empresa": 0.10,  # máximo por empresa
+        "max_setor": 0.25,  # máximo por setor
+        "nivel_minimo": 3,  # nível de consistência mínimo (3 = verde médio)
+        "excluir_armadilhas": True,
+    },
 }
 
 
