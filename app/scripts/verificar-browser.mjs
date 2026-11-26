@@ -158,6 +158,35 @@ await verificar('definicoes', '#/definicoes', {
 await verificar('sobre', '#/sobre', { espera: 'text=aconselhamento financeiro' })
 await verificar('carteira-vazia', '#/carteira', { espera: 'text=Importar o extrato da XTB' })
 
+// Simulador: cada ação → juntar 2 ações à distribuição → partes iguais → guardar um cenário
+for (const [nome, largura, altura] of [['simular-pc', 1366, 900], ['simular-telemovel', 390, 844]]) {
+  await verificar(nome, '#/simular', {
+    largura, altura, espera: '[data-simulador-cada]',
+    extra: async (p, erros) => {
+      const semScroll = async onde => {
+        const w = await p.evaluate(() => document.documentElement.scrollWidth)
+        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px)`)
+      }
+      await semScroll('cada ação')
+      const botoes = p.locator('button:visible', { hasText: '+ Distribuição' })
+      if ((await botoes.count()) < 2) { erros.push('não há ações para simular'); return }
+      await botoes.nth(0).click()
+      await botoes.nth(0).click() // o 1.º passou a "✓ Na distribuição": este é o seguinte
+      await p.getByRole('tab', { name: /Distribuição · 2/ }).click()
+      await p.waitForSelector('[data-simulador-distribuicao]')
+      await p.getByRole('button', { name: 'Partes iguais' }).click()
+      const soma = await p.locator('[data-soma-pct]').innerText()
+      if (!soma.includes('✓')) erros.push(`as percentagens não somam 100% (${soma})`)
+      await p.getByLabel('Nome do cenário').fill('Teste automático')
+      await p.getByRole('button', { name: 'Guardar cenário' }).click()
+      await p.waitForSelector('text=Cenário "Teste automático" guardado.')
+      if (!(await p.locator('li', { hasText: 'Teste automático' }).count())) erros.push('o cenário não aparece na lista')
+      await semScroll('distribuição')
+      await p.screenshot({ path: `${PASTA}/${nome}-distribuicao.png`, fullPage: true })
+    },
+  })
+}
+
 // Só no PC do utilizador: importa o extrato real que está em privado/ (no GitHub não existe).
 // As capturas ficam em app/verificacao/ (fora do Git).
 const extrato = existsSync('../privado') && readdirSync('../privado').find(f => /^EUR_.*\.xlsx$/i.test(f))

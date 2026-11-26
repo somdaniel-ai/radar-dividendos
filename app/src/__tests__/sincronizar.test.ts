@@ -9,7 +9,7 @@ import {
 const tx = (id: string, extra: Partial<Transacao> = {}): Transacao =>
   ({ id, tipo: 'compra', ticker: 'KO.US', nome: null, data: '2026-01-01T00:00:00.000Z', valor_eur: -10, quantidade: 1, preco: 10, origem: 'xtb', ...extra })
 
-const vazio = (): DadosPessoais => ({ definicoes: null, favoritos: [], notas: {}, carteira: [], decisoes: {} })
+const vazio = (): DadosPessoais => ({ definicoes: null, favoritos: [], notas: {}, carteira: [], decisoes: {}, cenarios: {} })
 
 /** "Conta" falsa: aplica as operações como o Supabase faria. */
 function contaFalsa(inicial: DadosPessoais = vazio(), falharEm = -1): Backend & { dados: DadosPessoais; n: number } {
@@ -24,6 +24,7 @@ function contaFalsa(inicial: DadosPessoais = vazio(), falharEm = -1): Backend & 
     if (op.t === 'transacoes') { const ids = new Set(op.linhas.map(l => l.id)); d.carteira = [...d.carteira.filter(t => !ids.has(t.id)), ...op.linhas] }
     if (op.t === 'transacoes_apagar') d.carteira = d.carteira.filter(t => !op.ids.includes(t.id))
     if (op.t === 'decisao') { if (op.d) d.decisoes[op.chave] = op.d; else delete d.decisoes[op.chave] }
+    if (op.t === 'cenario') { if (op.c) d.cenarios[op.id] = op.c; else delete d.cenarios[op.id] }
   }
   return c
 }
@@ -33,6 +34,7 @@ describe('sincronização', () => {
     definicoes: { parametros: { preco: { yield_alvo: 0.07 } }, colunas: { pos52: true }, tema: 'escuro' },
     favoritos: ['KO.US', 'NOS.PT'], notas: { 'KO.US': 'nota do PC' },
     carteira: [tx('1'), tx('2')], decisoes: { 'NOS.PT|2023-05-01': { decisao: 'confirmar', valor_extra: 0.15, em: '2026-11-01' } },
+    cenarios: { c1: { nome: 'Reformado', valor: 1000, linhas: [{ ticker: 'KO.US', pct: 100 }], atualizado_em: '2026-11-26T10:00:00.000Z' } },
   }
 
   it('1.º login: junta aparelho + conta sem perder nada (a conta ganha nos conflitos)', () => {
@@ -43,6 +45,7 @@ describe('sincronização', () => {
     expect(j.carteira.map(t => t.id).sort()).toEqual(['1', '2', '3'])
     expect(j.definicoes).toEqual(pc.definicoes) // a conta ainda não tinha definições
     expect(j.decisoes).toEqual(pc.decisoes)
+    expect(j.cenarios).toEqual(pc.cenarios)
   })
 
   it('depois de enviar as diferenças, a conta fica igual ao resultado', async () => {
@@ -55,6 +58,7 @@ describe('sincronização', () => {
     expect(depois.carteira.map(t => t.id).sort()).toEqual(['1', '2', '3'])
     expect(depois.definicoes).toEqual(pc.definicoes)
     expect(depois.notas).toEqual(alvo.notas)
+    expect(depois.cenarios).toEqual(pc.cenarios)
     expect(operacoesPara(depois, alvo)).toEqual([]) // nada mais a enviar
   })
 

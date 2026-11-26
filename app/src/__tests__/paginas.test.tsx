@@ -7,6 +7,7 @@ import { ContextoApp, type Contexto } from '../lib/contexto'
 import { VistaAcao } from '../paginas/Acao'
 import { Definicoes } from '../paginas/Definicoes'
 import { Radar } from '../paginas/Radar'
+import { Simular } from '../paginas/Simular'
 import { Sobre } from '../paginas/Sobre'
 import type { AcaoDetalhe, Parametros } from '../tipos'
 import amostra from './amostra.json'
@@ -23,7 +24,7 @@ const ctx: Contexto = {
   alterar: () => {}, repor: () => {}, personalizado: false,
   favoritos: new Set(['KO.US']), alternarFavorito: () => {}, notas: { 'KO.US': 'nota' }, gravarNota: () => {},
   tema: 'auto', setTema: () => {}, carteira: [], gravarCarteira: () => {}, naCarteira: new Set(['WU.US']),
-  colunas: {}, gravarColunas: () => {}, decisoes: {}, gravarDecisoes: () => {},
+  colunas: {}, gravarColunas: () => {}, decisoes: {}, gravarDecisoes: () => {}, cenarios: {}, gravarCenario: () => {},
   sessao: null, sync: { estado: 'local', pendentes: 0 }, entrar: async () => {}, sair: async () => {}, sincronizarAgora: () => {},
 }
 
@@ -74,6 +75,25 @@ describe('páginas', () => {
       expect(html).toMatch(/1 ação da sua carteira não aparece/)
     } finally {
       ctx.naCarteira = original
+      globalThis.localStorage = antes
+    }
+  })
+  it('Simular: cada ação (100 € por defeito) e distribuição com cenário', () => {
+    const html = desenhar(<Simular />)
+    expect(html).toContain('data-simulador-cada')
+    expect(html).toContain('WU.US')
+    expect(html).toContain('+ Distribuição')
+    const guardado: Record<string, string> = {
+      'radar.simulador.rascunho': JSON.stringify({ id: null, nome: 'Teste', valor: 1000, linhas: [{ ticker: 'WU.US', pct: 60 }, { ticker: 'KO.US', pct: 30 }] }),
+    }
+    const antes = globalThis.localStorage
+    globalThis.localStorage = { getItem: (k: string) => guardado[k] ?? null, setItem: () => {} } as unknown as Storage
+    try {
+      const d = renderToString(<ContextoApp.Provider value={ctx}><MemoryRouter initialEntries={['/simular?modo=distribuicao']}><Simular /></MemoryRouter></ContextoApp.Provider>)
+      expect(d).toContain('data-simulador-distribuicao')
+      expect(d).toMatch(/Soma: <!-- -->90(,00)?<!-- -->%.*faltam 10(,00)?%/)
+      expect(d).toContain('Só pode guardar quando as percentagens somarem 100%')
+    } finally {
       globalThis.localStorage = antes
     }
   })

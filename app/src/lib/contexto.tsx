@@ -8,7 +8,7 @@ import { lerMeta, lerPadrao, lerRadar } from './dados'
 import type { Transacao } from './extrato'
 import {
   backendSupabase, juntarDados, operacoesCarteira, operacoesPara, processarFila,
-  type DadosPessoais, type Decisao, type Operacao,
+  type Cenario, type DadosPessoais, type Decisao, type Operacao,
 } from './sincronizar'
 import { enderecoRegresso, haSessaoGuardada, obterCliente } from './supabase'
 
@@ -51,6 +51,9 @@ export interface Contexto {
   /** decisões sobre possíveis dividendos extraordinários ("TICKER|data") */
   decisoes: Record<string, Decisao>
   gravarDecisoes: (d: Record<string, Decisao>) => void
+  /** cenários do simulador (por id); null apaga */
+  cenarios: Record<string, Cenario>
+  gravarCenario: (id: string, c: Cenario | null) => void
   /** conta (Supabase, login com GitHub) */
   sessao: Sessao | null
   sync: EstadoSync
@@ -68,6 +71,7 @@ const K_NOT = 'radar.notas'
 const K_TEMA = 'radar.tema'
 const K_CART = 'radar.carteira'
 const K_DEC = 'radar.extraordinarios.decisoes'
+const K_CEN = 'radar.cenarios'
 const K_FILA = 'radar.sync.fila'
 const K_UTIL = 'radar.sync.utilizador' // conta cujos dados já foram juntados neste aparelho
 
@@ -80,23 +84,24 @@ interface Pessoal {
   carteira: Transacao[]
   colunas: Record<string, boolean>
   decisoes: Record<string, Decisao>
+  cenarios: Record<string, Cenario>
 }
 const CHAVES: Record<keyof Pessoal, string> = {
-  alteracoes: K_DEF, favoritos: K_FAV, notas: K_NOT, tema: K_TEMA, carteira: K_CART, colunas: CHAVE_COLUNAS, decisoes: K_DEC,
+  alteracoes: K_DEF, favoritos: K_FAV, notas: K_NOT, tema: K_TEMA, carteira: K_CART, colunas: CHAVE_COLUNAS, decisoes: K_DEC, cenarios: K_CEN,
 }
 const lerPessoal = (): Pessoal => ({
   alteracoes: ler(K_DEF, {}), favoritos: ler<string[]>(K_FAV, []), notas: ler(K_NOT, {}), tema: ler<Tema>(K_TEMA, 'auto'),
-  carteira: ler<Transacao[]>(K_CART, []), colunas: lerColunas(), decisoes: ler(K_DEC, {}),
+  carteira: ler<Transacao[]>(K_CART, []), colunas: lerColunas(), decisoes: ler(K_DEC, {}), cenarios: ler(K_CEN, {}),
 })
 const paraDados = (p: Pessoal): DadosPessoais => ({
   definicoes: { parametros: p.alteracoes, colunas: p.colunas, tema: p.tema },
-  favoritos: p.favoritos, notas: p.notas, carteira: p.carteira, decisoes: p.decisoes,
+  favoritos: p.favoritos, notas: p.notas, carteira: p.carteira, decisoes: p.decisoes, cenarios: p.cenarios,
 })
 const deDados = (d: DadosPessoais, atual: Pessoal): Pessoal => ({
   alteracoes: d.definicoes?.parametros ?? atual.alteracoes,
   colunas: { ...atual.colunas, ...(d.definicoes?.colunas ?? {}) },
   tema: (d.definicoes?.tema as Tema | undefined) ?? atual.tema,
-  favoritos: d.favoritos, notas: d.notas, carteira: d.carteira, decisoes: d.decisoes,
+  favoritos: d.favoritos, notas: d.notas, carteira: d.carteira, decisoes: d.decisoes, cenarios: d.cenarios,
 })
 const opDefinicoes = (p: Pessoal): Operacao => ({ t: 'definicoes', dados: { parametros: p.alteracoes, colunas: p.colunas, tema: p.tema } })
 
@@ -334,6 +339,12 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     }
     mudar({ decisoes: d }, ops)
   }, [mudar])
+  const gravarCenario = useCallback((id: string, c: Cenario | null) => {
+    const n = { ...atual.current.cenarios }
+    if (c) n[id] = c
+    else delete n[id]
+    mudar({ cenarios: n }, [{ t: 'cenario', id, c }])
+  }, [mudar])
   const sincronizarAgora = useCallback(() => { void atualizarDaConta() }, [atualizarDaConta])
 
   const favoritos = useMemo(() => new Set(pessoal.favoritos), [pessoal.favoritos])
@@ -354,6 +365,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     favoritos, alternarFavorito, notas: pessoal.notas, gravarNota, tema, setTema,
     carteira: pessoal.carteira, gravarCarteira, naCarteira,
     colunas: pessoal.colunas, gravarColunas, decisoes: pessoal.decisoes, gravarDecisoes,
+    cenarios: pessoal.cenarios, gravarCenario,
     sessao, sync, entrar, sair, sincronizarAgora,
   }
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>

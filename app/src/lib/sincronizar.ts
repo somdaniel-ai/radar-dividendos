@@ -11,6 +11,16 @@ import type { Transacao } from './extrato'
 
 export type Decisao = { decisao: 'confirmar' | 'rejeitar'; valor_extra: number; em: string }
 
+/** Cenário do simulador (modo distribuição), guardado com um nome. */
+export interface Cenario {
+  nome: string
+  /** valor a investir (EUR) */
+  valor: number
+  /** percentagens de 0 a 100 */
+  linhas: { ticker: string; pct: number }[]
+  atualizado_em: string
+}
+
 export interface DefinicoesPessoais {
   parametros: Record<string, unknown>
   colunas: Record<string, boolean>
@@ -25,6 +35,8 @@ export interface DadosPessoais {
   carteira: Transacao[]
   /** chave "TICKER|AAAA-MM-DD" */
   decisoes: Record<string, Decisao>
+  /** cenários do simulador, por id */
+  cenarios: Record<string, Cenario>
 }
 
 export type Operacao =
@@ -34,6 +46,7 @@ export type Operacao =
   | { t: 'transacoes'; linhas: Transacao[] }
   | { t: 'transacoes_apagar'; ids: string[] }
   | { t: 'decisao'; chave: string; d: Decisao | null }
+  | { t: 'cenario'; id: string; c: Cenario | null }
 
 // ——— lógica (sem rede) ———
 
@@ -46,6 +59,7 @@ export function juntarDados(local: DadosPessoais, conta: DadosPessoais): DadosPe
     notas: { ...local.notas, ...conta.notas },
     carteira: [...conta.carteira, ...local.carteira.filter(t => !idsConta.has(t.id))],
     decisoes: { ...local.decisoes, ...conta.decisoes },
+    cenarios: { ...local.cenarios, ...conta.cenarios },
   }
 }
 
@@ -63,6 +77,9 @@ export function operacoesPara(conta: DadosPessoais, alvo: DadosPessoais): Operac
   if (novas.length) ops.push(...operacoesCarteira([], novas))
   for (const [k, d] of Object.entries(alvo.decisoes)) {
     if (JSON.stringify(conta.decisoes[k]) !== JSON.stringify(d)) ops.push({ t: 'decisao', chave: k, d })
+  }
+  for (const [k, c] of Object.entries(alvo.cenarios)) {
+    if (JSON.stringify(conta.cenarios[k]) !== JSON.stringify(c)) ops.push({ t: 'cenario', id: k, c })
   }
   return ops
 }
@@ -121,14 +138,19 @@ function verificar<T>(r: { data: T; error: { message: string } | null }): T {
   return r.data
 }
 
+/** A tabela ainda não foi criada no Supabase (migração por correr)? Então não bloqueia o resto. */
+const semTabela = (e: { code?: string; message: string } | null) =>
+  !!e && (e.code === 'PGRST205' || e.code === '42P01' || /could not find the table|does not exist/i.test(e.message))
+
 export function backendSupabase(cliente: SupabaseClient): Backend {
   return {
     async ler() {
-      const [defs, favs, notas, decs] = await Promise.all([
+      const [defs, favs, notas, decs, cens] = await Promise.all([
         cliente.from('definicoes').select('dados').maybeSingle(),
         cliente.from('favoritos').select('ticker'),
         cliente.from('notas').select('ticker, texto'),
         cliente.from('extraordinarios_decisoes').select('ticker, data, decisao, valor_extra, decidido_em'),
+        cliente.from('cenarios').select('id, nome, dados, atualizado_em'),
       ])
       // a carteira pode ter mais de 1000 linhas: ler às páginas
       const carteira: Transacao[] = []
@@ -145,6 +167,9 @@ export function backendSupabase(cliente: SupabaseClient): Backend {
         carteira,
         decisoes: Object.fromEntries((verificar(decs) as { ticker: string; data: string; decisao: Decisao['decisao']; valor_extra: number; decidido_em: string }[])
           .map(x => [`${x.ticker}|${x.data}`, { decisao: x.decisao, valor_extra: Number(x.valor_extra), em: x.decidido_em.slice(0, 10) }])),
+        cenarios: semTabela(cens.error) ? {} : Object.fromEntries(
+          (verificar(cens) as { id: string; nome: string; dados: Pick<Cenario, 'valor' | 'linhas'>; atualizado_em: string }[])
+            .map(x => [x.id, { nome: x.nome, valor: Number(x.dados.valor), linhas: x.dados.linhas, atualizado_em: new Date(x.atualizado_em).toISOString() }])),
       }
     },
     async aplicar(op) {
@@ -173,6 +198,13 @@ export function backendSupabase(cliente: SupabaseClient): Backend {
           verificar(op.d
             ? await cliente.from('extraordinarios_decisoes').upsert({ ticker, data, decisao: op.d.decisao, valor_extra: op.d.valor_extra, decidido_em: new Date(op.d.em).toISOString() })
             : await cliente.from('extraordinarios_decisoes').delete().eq('ticker', ticker).eq('data', data))
+          break
+        }
+        case 'cenario': {
+          const r = op.c
+            ? await cliente.from('cenarios').upsert({ id: op.id, nome: op.c.nome, dados: { valor: op.c.valor, linhas: op.c.linhas }, atualizado_em: op.c.atualizado_em }, { onConflict: 'user_id,id' })
+            : await cliente.from('cenarios').delete().eq('id', op.id)
+          if (!semTabela(r.error)) verificar(r) // sem a tabela, fica só no aparelho
           break
         }
       }
