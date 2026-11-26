@@ -6,6 +6,7 @@ import { recalcular, type AcaoCalculada } from './calculos'
 import { CHAVE_COLUNAS, lerColunas } from './colunas'
 import { lerMeta, lerPadrao, lerRadar } from './dados'
 import { ALERTAS_PADRAO } from './alertas'
+import { aplicarPrecos, CHAVE_PRECOS, MAXIMO_ACOES, pedirPrecos, precosValidos, simbolosPara, type PrecosAgora } from './atualizar'
 import { META_PADRAO } from './meta'
 import type { Transacao } from './extrato'
 import {
@@ -62,6 +63,10 @@ export interface Contexto {
   entrar: () => Promise<void>
   sair: () => Promise<void>
   sincronizarAgora: () => void
+  /** preços do momento (botão "Atualizar preços"), só neste aparelho; null = os da última atualização */
+  precosAgora: PrecosAgora | null
+  /** pede os preços atuais das ações da carteira e dos favoritos; devolve quantas vieram */
+  atualizarPrecos: () => Promise<{ atualizadas: number; pedidas: number; falhados: string[] }>
 }
 
 export const ContextoApp = createContext<Contexto | null>(null)
@@ -153,6 +158,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
   const aEnviar = useRef(false)
   const ultimaLeitura = useRef(0)
   const [sync, setSync] = useState<EstadoSync>({ estado: 'local', pendentes: fila.current.length })
+  const [precosGuardados, setPrecosGuardados] = useState<PrecosAgora | null>(() => ler<PrecosAgora | null>(CHAVE_PRECOS, null))
 
   useEffect(() => {
     Promise.all([lerRadar(), lerMeta(), lerPadrao()])
@@ -303,7 +309,8 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
   const sair = useCallback(async () => {
     await cliente.current?.auth.signOut()
     // os dados ficam na conta; neste aparelho apaga-se a cópia (pode ser um aparelho partilhado)
-    for (const k of [...Object.values(CHAVES), K_FILA, K_UTIL]) apagar(k)
+    for (const k of [...Object.values(CHAVES), K_FILA, K_UTIL, CHAVE_PRECOS]) apagar(k)
+    setPrecosGuardados(null)
     fila.current = []
     sessaoRef.current = null
     setSessao(null)
@@ -314,10 +321,13 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
   // ——— valores derivados e alterações ———
   const params = useMemo(() => (padrao ? fundir(padrao, pessoal.alteracoes) : null), [padrao, pessoal.alteracoes])
   const hoje = meta?.data_referencia ?? new Date().toISOString().slice(0, 10)
+  // os preços do botão só contam enquanto forem mais recentes do que os dados publicados
+  const precosAgora = useMemo(() => (precosValidos(precosGuardados, meta?.gerado_em) ? precosGuardados : null),
+    [precosGuardados, meta?.gerado_em])
   const acoes = useMemo(() => {
     if (!radar || !params) return []
-    return radar.map(a => recalcular(a, params, hoje))
-  }, [radar, params, hoje])
+    return aplicarPrecos(radar, precosAgora).map(a => recalcular(a, params, hoje))
+  }, [radar, params, hoje, precosAgora])
 
   const alterar = useCallback((caminho: string, valor: unknown) => {
     mudarDefinicoes({ alteracoes: definirEm(atual.current.alteracoes, caminho, valor) })
@@ -366,6 +376,20 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     return new Set(Object.keys(q).filter(k => q[k] > 1e-9))
   }, [pessoal.carteira])
 
+  const atualizarPrecos = useCallback(async () => {
+    const quero = new Set([...naCarteira, ...favoritos])
+    // a carteira primeiro (se houver mais de 60, os favoritos a mais ficam de fora)
+    const lista = (radar ?? []).filter(a => quero.has(a.ticker))
+      .sort((a, b) => Number(naCarteira.has(b.ticker)) - Number(naCarteira.has(a.ticker)))
+    if (!lista.length) return { atualizadas: 0, pedidas: 0, falhados: [] }
+    const r = await pedirPrecos(simbolosPara(lista))
+    const novo: PrecosAgora = { em: r.em, precos: r.precos }
+    gravar(CHAVE_PRECOS, novo)
+    setPrecosGuardados(novo)
+    const atualizadas = aplicarPrecos(lista, novo).filter(a => a.preco_agora_em).length
+    return { atualizadas, pedidas: Math.min(lista.length, MAXIMO_ACOES), falhados: r.falhados ?? [] }
+  }, [radar, naCarteira, favoritos])
+
   const valor: Contexto = {
     aCarregar: !erro && (!radar || !params),
     erro, meta, padrao, params, acoes, hoje,
@@ -374,7 +398,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     carteira: pessoal.carteira, gravarCarteira, naCarteira,
     colunas: pessoal.colunas, gravarColunas, decisoes: pessoal.decisoes, gravarDecisoes,
     cenarios: pessoal.cenarios, gravarCenario,
-    sessao, sync, entrar, sair, sincronizarAgora,
+    sessao, sync, entrar, sair, sincronizarAgora, precosAgora, atualizarPrecos,
   }
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>
 }

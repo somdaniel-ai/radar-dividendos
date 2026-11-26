@@ -7,6 +7,7 @@ import { AVISO_LEGAL } from './Comuns'
 import { BotaoConta } from './Conta'
 import { RedeSeguranca } from './RedeSeguranca'
 import { SinoAlertas } from './Sino'
+import { BotaoAtualizar } from './Atualizar'
 
 const LINKS = [
   { para: '/', texto: 'Radar', icone: '📡' },
@@ -61,6 +62,7 @@ export function Layout() {
               Atualizado: {dataHora(meta.gerado_em)}
             </span>
           )}
+            <BotaoAtualizar />
             <SinoAlertas />
             <BotaoConta />
           </div>

@@ -31,8 +31,9 @@ await new Promise((ok, falha) => {
 const problemas = []
 const browser = await chromium.launch({ channel: canal, headless: true })
 
-async function verificar(nome, rota, { largura = 1280, altura = 800, espera, extra, armazenamento } = {}) {
+async function verificar(nome, rota, { largura = 1280, altura = 800, espera, extra, armazenamento, preparar } = {}) {
   const ctx = await browser.newContext({ viewport: { width: largura, height: altura }, serviceWorkers: 'block' })
+  if (preparar) await preparar(ctx)
   if (armazenamento) await ctx.addInitScript(o => { for (const [k, v] of Object.entries(o)) localStorage.setItem(k, v) }, armazenamento)
   const pagina = await ctx.newPage()
   const erros = []
@@ -482,6 +483,73 @@ if (extrato) {
         await p.getByRole('tab', { name: 'Mês', exact: true }).click()
         await p.getByRole('button', { name: 'Mês anterior' }).click()
         await p.screenshot({ path: `${PASTA}/${nome}-calendario-mes-anterior.png`, fullPage: true })
+      },
+    })
+  }
+}
+
+// ——— "Atualizar agora" (⟳) com uma sessão a fingir: o Supabase e as Edge Functions são
+// imitados aqui, no browser (nada sai para a internet nem toca na conta verdadeira) ———
+{
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url')
+  const exp = Math.floor(Date.now() / 1000) + 3600 * 24
+  const user = { id: '00000000-0000-0000-0000-000000000001', aud: 'authenticated', role: 'authenticated', email: null,
+    user_metadata: { user_name: 'teste' }, app_metadata: {}, created_at: '2026-01-01T00:00:00Z' }
+  const sessaoFalsa = JSON.stringify({ access_token: `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: user.id, exp, role: 'authenticated' })}.x`,
+    refresh_token: 'falso', token_type: 'bearer', expires_in: 86400, expires_at: exp, user })
+  const favsAt = radar.acoes.filter(a => a.preco && a.cambio_eur && a.moeda !== 'EUR').slice(0, 3)
+  // o que o Yahoo "responderia": preço +10%, com a moeda certa; câmbios a partir dos dados
+  const cot = {}
+  for (const a of radar.acoes) {
+    if (a.preco) cot[a.ticker_yahoo] = { preco: a.preco * 1.1, moeda: a.moeda, anterior: a.preco, hora: null }
+    const x = a.cotacao_xtb
+    if (x?.simbolo && x.preco) cot[x.simbolo] = { preco: x.preco * 1.1, moeda: x.moeda, anterior: x.preco, hora: null }
+    if (a.moeda && a.cambio_eur && a.moeda !== 'EUR') {
+      const base = { GBp: 'GBP', GBX: 'GBP', ILA: 'ILS', ZAc: 'ZAR' }[a.moeda]
+      cot[`EUR${base ?? a.moeda}=X`] = { preco: 1 / (a.cambio_eur * (base ? 100 : 1)), moeda: base ?? a.moeda, anterior: null, hora: null }
+    }
+  }
+  const inicio = new Date(Date.now() - 12 * 60000).toISOString()
+  const preparar = async ctx => {
+    await ctx.route('https://mimdxffecbctnzhskjwh.supabase.co/**', async rota => {
+      const r = rota.request(), url = new URL(r.url())
+      const json = (corpo, extra = {}) => rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(corpo), ...extra })
+      if (url.pathname === '/functions/v1/precos') {
+        const { simbolos } = r.postDataJSON()
+        return json({ precos: Object.fromEntries(simbolos.filter(x => cot[x]).map(x => [x, cot[x]])), falhados: simbolos.filter(x => !cot[x]), em: new Date().toISOString() })
+      }
+      if (url.pathname === '/functions/v1/atualizar')
+        return json({ ultima: { id: 1, estado: 'in_progress', resultado: null, origem: 'workflow_dispatch', criada_em: inicio, iniciada_em: inicio, atualizada_em: inicio },
+          a_correr: true, validade_token: new Date(Date.now() + 20 * 86400000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' })
+      if (url.pathname.startsWith('/auth/v1/user')) return json(user)
+      if (url.pathname === '/rest/v1/favoritos' && r.method() === 'GET') return json(favsAt.map(a => ({ ticker: a.ticker })))
+      if (r.method() === 'GET' || r.method() === 'HEAD') return json([], { headers: { 'content-range': '*/0' } })
+      return rota.fulfill({ status: 201, body: '' })
+    })
+  }
+  const armazenamento = { 'radar.sessao': sessaoFalsa, 'radar.sync.utilizador': JSON.stringify(user.id) }
+  for (const [nome, largura] of [['atualizar-pc', 1280], ['atualizar-telemovel', 390]]) {
+    await verificar(nome, '#/favoritos', {
+      largura, altura: largura < 500 ? 844 : 800, espera: '[data-botao-atualizar]', armazenamento, preparar,
+      extra: async (p, erros) => {
+        await p.locator('[data-botao-atualizar]').click()
+        await p.waitForSelector('[data-painel-atualizar]')
+        await p.waitForSelector('[data-estado-atualizacao] >> text=A correr há', { timeout: 5000 }).catch(() => erros.push('não mostrou a atualização a correr'))
+        if (!(await p.locator('[data-lancar-atualizacao]').isDisabled())) erros.push('deixa lançar outra atualização com uma a correr')
+        if (!(await p.locator('[data-aviso-token]').count())) erros.push('não avisou que o token expira daqui a 20 dias')
+        await p.locator('[data-atualizar-precos]').click()
+        await p.waitForSelector('[data-resultado-precos]', { timeout: 5000 }).catch(() => erros.push('os preços não chegaram'))
+        const res = await p.locator('[data-resultado-precos]').innerText().catch(() => '')
+        if (!res.includes('3 de 3')) erros.push(`resultado inesperado: "${res}"`)
+        if (!(await p.locator('[data-hora-precos]', { hasText: 'hoje às' }).count())) erros.push('não mostra a hora dos preços')
+        const caixa = await p.locator('[data-painel-atualizar]').boundingBox()
+        if (caixa && (caixa.x < 0 || caixa.x + caixa.width > largura)) erros.push(`o painel sai do ecrã (${Math.round(caixa.x)}–${Math.round(caixa.x + caixa.width)} px)`)
+        if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push(`scroll para o lado: ${await quemSai(p, largura)}`)
+        await p.screenshot({ path: `${PASTA}/${nome}-painel.png` })
+        // o preço novo (+10%) chega à página
+        await p.keyboard.press('Escape')
+        const guardado = await p.evaluate(() => JSON.parse(localStorage.getItem('radar.precos') ?? 'null'))
+        if (!guardado?.precos?.[favsAt[0].ticker_yahoo]) erros.push('os preços não ficaram guardados neste aparelho')
       },
     })
   }

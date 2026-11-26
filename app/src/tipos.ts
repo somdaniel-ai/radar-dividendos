@@ -126,6 +126,8 @@ export interface Acao {
   pontuacao: Pontuacao
   pagou_recentemente: boolean
   atualizado_em?: string
+  /** hora a que o preço foi atualizado com o botão "Atualizar preços" (só neste aparelho) */
+  preco_agora_em?: string
   desatualizado?: boolean
   posicao_ranking?: number
 }

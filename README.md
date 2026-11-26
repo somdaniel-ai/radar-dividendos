@@ -14,7 +14,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | 3 | Universo completo da XTB | ✅ concluída |
 | 4 | Supabase: login e carteira | ✅ concluída |
 | 5 | Simulador, Meta de rendimento e Projeção | ✅ concluída |
-| 6 | Calendário, Alertas (Telegram) e "Atualizar agora" | 🚧 em curso (Calendário e Alertas feitos) |
+| 6 | Calendário, Alertas (Telegram) e "Atualizar agora" | 🚧 em curso (Calendário e Alertas feitos; "Atualizar agora" a instalar) |
 | 7 | Afinações | ⏳ |
 
 ## Estrutura das pastas
@@ -50,6 +50,26 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | **Simular** 🧮 | **Simulador** — *Cada ação*: com X € (por defeito o valor das Definições), quantas ações compraria em cada ação do Radar (frações permitidas) e quanto receberia por mês e por ano, bruto e líquido; separadores por categoria, ⭐ Favoritos e 💼 Carteira. *Distribuição*: várias ações com percentagens (têm de somar 100%), com o nível, yield, pontos, setor, país/moeda, ⚠️ armadilhas, ✓ abaixo do preço justo e 💼 quanto já tem investido em cada uma; resumo em % por setor, categoria, país, moeda e nível; botões "Partes iguais" e "Adicionar todos os favoritos"; **cenários** guardados com nome (no aparelho e na conta). **Meta de rendimento** — "quero X € por mês líquidos": escolhe as melhores pontuações respeitando os limites ⚙️ (máximo por empresa e por setor, nível mínimo, sem armadilhas) e mostra o capital necessário e a distribuição, que pode abrir no Simulador. **Projeção** — a partir da carteira, de um cenário guardado ou de valores à mão: entrada mensal, anos, reinvestir os dividendos (sim/não), crescimento do dividendo (histórico dos últimos 5 anos das suas ações, pesado pelo valor e limitado a ±15%, ou manual) e do preço (manual); gráficos do valor e do rendimento mensal ano a ano e a tabela com os mesmos números. Se o yield de partida passar de 10%, aparece um aviso (yields altos vêm muitas vezes com descidas do preço e cortes) e o botão **Ver cenário prudente** (preço e dividendo a descer 3% por ano), com "Voltar aos valores anteriores". Não é aconselhamento financeiro. |
 | **Definições** | Cartão **Conta** (entrar com o GitHub e estado da sincronização). Todos os parâmetros ⚙️. As alterações recalculam o radar na hora. Botão "Repor valores por defeito". **Colunas do Radar** (as mesmas do botão Colunas). Cartão **Universo**: quantos instrumentos o motor acompanha e um espaço para colar ou importar uma lista de símbolos (ex.: da XTB) — mostra o estado de cada um, junta-os aos favoritos e copia os que faltam. |
 | **Sobre** | Aviso legal, explicação dos cálculos, legenda das cores e estado da última atualização. |
+
+### Atualizar agora (⟳)
+
+Com sessão iniciada, o botão **⟳** no topo abre um painel com a hora dos dados e dois botões:
+- **Atualizar preços:** em segundos, pede ao Yahoo os preços do momento das ações da **carteira e dos favoritos** (no máximo 60) e os câmbios. A app recalcula o yield, o preço justo, a pontuação e o valor da carteira. Os preços novos ficam **só nesse aparelho** e são substituídos pela atualização seguinte dos dados. Só acontece quando se carrega no botão.
+- **Lançar atualização completa:** pede ao GitHub uma atualização como a da noite, com 30 minutos de dados (a carteira e os favoritos vão primeiro). Demora cerca de 40 minutos; o painel mostra o estado e, no fim, o botão "Recarregar a app". Não deixa lançar outra enquanto houver uma a correr.
+
+Funciona com duas **Edge Functions** do Supabase (código em `supabase/funcoes/`), instaladas pelo painel do Supabase (Edge Functions → Deploy a new function → Via Editor → colar o ficheiro → Deploy, com "Verify JWT with legacy secret" desligado, porque a verificação é feita no código):
+- `precos` só fala com o Yahoo. Não lê nem grava nada na base de dados.
+- `atualizar` usa um token do GitHub guardado nos segredos do Supabase.
+
+As duas só respondem ao dono da app (sessão válida e número de utilizador igual ao segredo `DONO_ID`) e só a pedidos vindos do endereço da app.
+
+#### Renovar o token do GitHub (uma vez por ano)
+
+O painel ⟳ avisa 30 dias antes de o token expirar. Para criar um novo:
+1. GitHub → foto (canto superior direito) → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+2. Nome `radar-atualizar`, validade 1 ano, **Only select repositories** → `radar-dividendos`, permissões → **Actions: Read and write** (nada mais) → **Generate token**.
+3. Copiar o token (sem o colar em mais lado nenhum) e, no Supabase → **Edge Functions** → **Secrets**, substituir o valor de `GITHUB_TOKEN_ATUALIZAR`.
+4. Apagar o token antigo no GitHub.
 
 ### Conta e sincronização (Supabase)
 
@@ -340,4 +360,6 @@ O repositório é **público**. Dados pessoais, chaves e tokens nunca são guard
 - O único segredo do pipeline ligado ao Supabase é `SUPABASE_CHAVE_MOTOR`. Só serve para chamar funções com acesso mínimo: ler as decisões sobre extraordinários (migração 0002) e, para os alertas (migração 0004), ler os tickers e quantidades da carteira, os favoritos e as escolhas de alertas, guardar alertas e marcá-los como enviados. Nunca dá acesso a preços de compra, valores investidos, notas ou operações.
 - **Telegram:** o token do bot e o número da conversa estão só nos segredos do GitHub (`TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`). O bot só envia mensagens (não lê nem responde). Os registos do GitHub Actions são públicos: o motor e o envio só escrevem lá **contagens**, nunca tickers, valores, o token ou o chat id. As mensagens têm valores em € (escolha do utilizador; desliga-se nas Definições).
 - **Envio dos alertas:** tarefa "Enviar alertas" (`.github/workflows/alertas.yml`), de hora a hora; só envia à hora escolhida e uma vez por dia. No separador Actions → "Enviar alertas" → **Run workflow** há os modos **teste** (mensagem de teste) e **agora** (envia já o que estiver por enviar).
+- **Atualizar agora:** o token do GitHub (`GITHUB_TOKEN_ATUALIZAR`) e o número de utilizador do dono (`DONO_ID`) estão só nos segredos das Edge Functions do Supabase. O token só tem acesso ao repositório `radar-dividendos` e só à permissão **Actions** (lançar, ver ou cancelar atualizações). Não lê segredos nem muda código. As funções recusam pedidos sem a sessão do dono ou vindos de outro endereço.
+- **Registo público:** as ações da carteira, dos favoritos e das decisões são processadas primeiro, por isso o motor troca os seus símbolos por `•••` em todas as linhas do registo do GitHub Actions, e o `meta.json` público só tem o **número** de ações atualizadas.
 - O extrato da XTB nunca é enviado para o GitHub nem para o servidor: é lido no browser.
