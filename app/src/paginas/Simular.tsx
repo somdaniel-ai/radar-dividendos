@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AVISO_LEGAL, Carregando, Cartao, Erro, EtiquetaCategoria } from '../componentes/Comuns'
+import { AVISO_LEGAL, Carregando, Cartao, Erro, EtiquetaCategoria, NOMES_CATEGORIA } from '../componentes/Comuns'
 import { TextoSync } from '../componentes/Conta'
 import { gravar, ler } from '../lib/armazenamento'
 import type { AcaoCalculada } from '../lib/calculos'
 import { useApp } from '../lib/contexto'
 import { euros, numero, pct } from '../lib/formato'
 import type { Cenario } from '../lib/sincronizar'
-import { distribuir, lerNumero, partesIguais, simular } from '../lib/simulador'
+import {
+  distribuir, lerNumero, moedaXtb, partesIguais, resumoDistribuicao, simular, type AgruparDistribuicao, type Distribuicao,
+} from '../lib/simulador'
+import { calcularCarteira } from '../lib/carteira'
+import { NIVEIS } from '../lib/calculos'
+import { AgruparPor, BarrasPeso } from '../componentes/Barras'
+import { EtiquetaNivel } from '../componentes/Nivel'
 import { MetaRendimento } from '../componentes/MetaRendimento'
 
 const K_VALOR = 'radar.simulador.valor'
@@ -118,7 +124,7 @@ function CadaAcao({ juntar, naDistribuicao }: { juntar: (t: string) => void; naD
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <CampoValor valor={valor} mudar={setValor} />
           <input type="search" placeholder="Pesquisar ticker ou nome…" value={texto} onChange={e => setTexto(e.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-base dark:border-slate-700 dark:bg-slate-950" />
+            className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-base dark:border-slate-700 dark:bg-slate-950" />
           <label className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Ordenar por</span>
             <select value={ordem} onChange={e => setOrdem(e.target.value as keyof typeof ORDENS)}
@@ -222,8 +228,51 @@ function BotaoJuntar({ ativo, onClick }: { ativo: boolean; onClick: () => void }
 
 // ——— modo "distribuição" ———
 
+/** Ajuda a decidir as percentagens: nível, yield, pontos, setor, país/moeda, sinais e carteira. */
+function DetalhesAcao({ a, investido }: { a: AcaoCalculada; investido: number | null }) {
+  const { params } = useApp()
+  const usarHist = (params?.preco.preco_justo_pontuacao ?? 'historico') === 'historico'
+  const abaixo = usarHist ? a.abaixo_preco_justo_historico : a.abaixo_preco_justo
+  const sep = <span aria-hidden className="text-slate-300 dark:text-slate-600">·</span>
+  return (
+    <div data-detalhes-acao className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-500">
+      <EtiquetaNivel nivel={a.nivel.nivel} curta />
+      <span>yield líq. <b className="text-slate-700 dark:text-slate-200">{pct(a.yield.liquido)}</b></span>{sep}
+      <span><b className="text-slate-700 dark:text-slate-200">{numero(a.pontuacao.total, 0)}</b> pts</span>{sep}
+      <span>{a.setor || 'Sem setor'}</span>{sep}
+      <span>{a.pais || 'País desconhecido'} · {moedaXtb(a)}</span>
+      {a.armadilhas.length > 0 && (
+        <span title={a.armadilhas.map(x => x.texto).join('\n')} className="text-amber-700 dark:text-amber-300">
+          ⚠️ {a.armadilhas.length === 1 ? '1 sinal de armadilha' : `${a.armadilhas.length} sinais de armadilha`}
+        </span>
+      )}
+      {abaixo && <span className="text-emerald-700 dark:text-emerald-400" title={usarHist ? 'Abaixo do preço justo histórico' : 'Abaixo do preço justo'}>✓ abaixo do preço justo</span>}
+      {investido != null && <span className="text-slate-700 dark:text-slate-200" title="Já tem esta ação na carteira">💼 {euros(investido, 0)} investidos</span>}
+    </div>
+  )
+}
+
+const GRUPOS_RESUMO = [['setor', 'Setor'], ['categoria', 'Categoria'], ['pais', 'País'], ['moeda', 'Moeda'], ['nivel', 'Nível']] as const
+const nomeGrupo = (por: AgruparDistribuicao, k: string) =>
+  por === 'categoria' ? (NOMES_CATEGORIA[k] ?? k) : por === 'nivel' ? `${k} · ${NIVEIS[Number(k)]?.nome ?? ''}` : k
+
+function ResumoDistribuicao({ res }: { res: Distribuicao }) {
+  const [por, setPor] = useState<AgruparDistribuicao>('setor')
+  const linhas = resumoDistribuicao(res, por, nomeGrupo)
+  if (!linhas.length) return null
+  return (
+    <Cartao titulo="Resumo da distribuição" acao={<AgruparPor opcoes={GRUPOS_RESUMO} valor={por} mudar={setPor} />}>
+      <div data-resumo-distribuicao><BarrasPeso linhas={linhas} rotulo={`Distribuição por ${por}`} /></div>
+      {res.sem_dados.length > 0 && <p className="mt-2 text-xs text-slate-500">Sem contar as ações sem dados ({res.sem_dados.join(', ')}).</p>}
+    </Cartao>
+  )
+}
+
 function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void }) {
-  const { acoes, cenarios, gravarCenario, sessao, favoritos } = useApp()
+  const { acoes, cenarios, gravarCenario, sessao, favoritos, carteira, params } = useApp()
+  // quanto já tem investido em cada ação (para o 💼)
+  const investido = useMemo(() => new Map(calcularCarteira(carteira, acoes, params?.impostos).map(x => [x.ticker, x.custo_eur])),
+    [carteira, acoes, params])
   const [procura, setProcura] = useState('')
   const [soFavoritos, setSoFavoritos] = useState(false)
   const [guardado, setGuardado] = useState<string | null>(null)
@@ -271,7 +320,7 @@ function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void 
       <Cartao>
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <CampoValor valor={r.valor} mudar={v => mudar({ ...r, valor: v })} rotulo="Valor total a investir" />
-          <div className="relative min-w-0 flex-1">
+          <div className="relative min-w-[14rem] flex-1">
             <input type="search" placeholder="Acrescentar ação: escreva o ticker ou o nome…" value={procura} onChange={e => setProcura(e.target.value)}
               aria-label="Acrescentar ação"
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-base dark:border-slate-700 dark:bg-slate-950" />
@@ -314,7 +363,10 @@ function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void 
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {res.linhas.map((l, i) => (
               <li key={l.ticker} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm">
-                <div className="min-w-[10rem] flex-1"><NomeAcao a={l.acao} ticker={l.ticker} /></div>
+                <div className="min-w-[14rem] flex-1">
+                  <NomeAcao a={l.acao} ticker={l.ticker} />
+                  {l.acao && <DetalhesAcao a={l.acao} investido={investido.get(l.ticker) ?? null} />}
+                </div>
                 <label className="flex items-center gap-1">
                   <input inputMode="decimal" defaultValue={numero(l.pct, l.pct % 1 ? 2 : 0)} key={`${l.ticker}-${l.pct}`}
                     aria-label={`Percentagem de ${l.ticker}`}
@@ -341,6 +393,8 @@ function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void 
           </p>
         </Cartao>
       )}
+
+      {r.linhas.length > 0 && <ResumoDistribuicao res={res} />}
 
       {r.linhas.length > 0 && (
         <Cartao titulo="Resultado">

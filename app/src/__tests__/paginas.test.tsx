@@ -100,6 +100,11 @@ describe('páginas', () => {
       expect(d).toContain('Só pode guardar quando as percentagens somarem 100%')
       expect(d).toMatch(/⭐ Favoritos · <!-- -->1/)
       expect(d).toContain('Adicionar todos os favoritos')
+      // detalhes de cada linha (nível, yield, pontos, setor…) e resumo em %
+      expect((d.match(/data-detalhes-acao/g) ?? []).length).toBe(2)
+      expect(d).toContain('yield líq.')
+      expect(d).toContain('data-resumo-distribuicao')
+      expect(d).toContain('Resumo da distribuição')
     } finally {
       globalThis.localStorage = antes
     }

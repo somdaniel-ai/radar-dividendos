@@ -80,3 +80,32 @@ export function lerNumero(texto: string): number {
   const t = texto.replace(/\s|€|%/g, '').replace(',', '.')
   return t === '' ? NaN : Number(t)
 }
+
+export type AgruparDistribuicao = 'setor' | 'categoria' | 'pais' | 'moeda' | 'nivel'
+
+/** Moeda em que a ação se compra na XTB (ex.: TU.US em USD, mesmo com dados de Toronto). */
+export const moedaXtb = (a: AcaoCalculada) => a.cotacao_xtb?.moeda ?? a.moeda ?? 'Desconhecida'
+
+/** Resumo da distribuição em % (só as ações com dados), do maior para o menor.
+ *  `nomes` traduz o código do grupo (ex.: categoria "CEF" → "Fundos fechados"). */
+export function resumoDistribuicao(d: Distribuicao, por: AgruparDistribuicao,
+  nomes: (por: AgruparDistribuicao, chave: string) => string = (_, k) => k) {
+  const grupos = new Map<string, { peso: number; valor: number; ordem: number }>()
+  const total = d.linhas.reduce((s, l) => s + (l.acao && l.pct > 0 ? l.pct : 0), 0)
+  for (const l of d.linhas) {
+    if (!l.acao || !(l.pct > 0)) continue
+    const a = l.acao
+    const k = por === 'setor' ? (a.setor || 'Sem setor')
+      : por === 'categoria' ? a.categoria
+        : por === 'pais' ? (a.pais || 'Desconhecido')
+          : por === 'moeda' ? moedaXtb(a)
+            : String(a.nivel.nivel)
+    const g = grupos.get(k) ?? { peso: 0, valor: 0, ordem: por === 'nivel' ? -a.nivel.nivel : 0 }
+    g.peso += l.pct / total
+    g.valor += l.valor
+    grupos.set(k, g)
+  }
+  return [...grupos].map(([k, g]) => ({ nome: nomes(por, k), peso: g.peso, valor: g.valor, ordem: g.ordem }))
+    .sort((a, b) => (por === 'nivel' ? a.ordem - b.ordem : b.peso - a.peso))
+    .map(({ nome, peso, valor }) => ({ nome, peso, valor }))
+}

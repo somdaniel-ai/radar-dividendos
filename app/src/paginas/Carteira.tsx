@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Link } from 'react-router-dom'
 import { Carregando, Cartao, Erro } from '../componentes/Comuns'
+import { AgruparPor, BarrasPeso } from '../componentes/Barras'
 import { TextoSync } from '../componentes/Conta'
 import {
   calcularCarteira, diversificacao, juntar, pagamentos, porMes, resumo, verificar, type Diferenca, type Posicao,
@@ -234,26 +235,10 @@ function DicaMes({ active, payload }: { active?: boolean; payload?: { payload: {
 function Diversificacao({ posicoes }: { posicoes: Posicao[] }) {
   const [por, setPor] = useState<'empresa' | 'setor' | 'pais' | 'moeda'>('empresa')
   const linhas = diversificacao(posicoes, por)
-  const max = Math.max(...linhas.map(l => l.peso), 0.0001)
   return (
     <Cartao titulo="Diversificação" acao={
-      <div className="flex gap-1 text-xs" role="group" aria-label="Agrupar por">
-        {([['empresa', 'Empresa'], ['setor', 'Setor'], ['pais', 'País'], ['moeda', 'Moeda']] as const).map(([k, t]) => (
-          <button key={k} type="button" aria-pressed={por === k} onClick={() => setPor(k)}
-            className={`rounded-full px-2.5 py-1 ${por === k ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'ring-1 ring-slate-300 dark:ring-slate-700'}`}>{t}</button>
-        ))}
-      </div>}>
-      <ul className="space-y-1.5 text-sm">
-        {linhas.map(l => (
-          <li key={l.nome} className="grid grid-cols-[minmax(6rem,10rem)_1fr_auto] items-center gap-2" title={`${l.nome}: ${euros(l.valor)}`}>
-            <span className="truncate">{l.nome}</span>
-            <span className="h-3 rounded-r bg-slate-100 dark:bg-slate-800">
-              <span className="block h-3 rounded-r" style={{ width: `${(l.peso / max) * 100}%`, background: AZUL }} />
-            </span>
-            <span className="w-24 text-right tabular-nums">{pct(l.peso)} <span className="text-xs text-slate-500">{euros(l.valor, 0)}</span></span>
-          </li>
-        ))}
-      </ul>
+      <AgruparPor opcoes={[['empresa', 'Empresa'], ['setor', 'Setor'], ['pais', 'País'], ['moeda', 'Moeda']] as const} valor={por} mudar={setPor} />}>
+      <BarrasPeso linhas={linhas} rotulo="Diversificação" />
       <p className="mt-2 text-xs text-slate-500">Peso pelo valor atual (ou pelo valor investido, se não houver cotação).</p>
     </Cartao>
   )

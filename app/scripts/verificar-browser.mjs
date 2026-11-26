@@ -210,6 +210,12 @@ for (const [nome, largura, altura] of [['simular-pc', 1366, 900], ['simular-tele
       await p.getByRole('button', { name: 'Partes iguais' }).click()
       const soma = await p.locator('[data-soma-pct]').innerText()
       if (!soma.includes('✓')) erros.push(`as percentagens não somam 100% (${soma})`)
+      if ((await p.locator('[data-detalhes-acao]').count()) !== 2) erros.push('faltam os detalhes (nível, yield, setor…) nas linhas')
+      for (const g of ['Setor', 'Categoria', 'País', 'Moeda', 'Nível']) {
+        await p.getByRole('button', { name: g, exact: true }).click()
+        if (!(await p.locator('[data-resumo-distribuicao] li').count())) erros.push(`resumo por ${g} vazio`)
+        await semScroll(`resumo por ${g}`)
+      }
       await p.getByLabel('Nome do cenário').fill('Teste automático')
       await p.getByRole('button', { name: 'Guardar cenário' }).click()
       await p.waitForSelector('text=Cenário "Teste automático" guardado.')
@@ -252,6 +258,16 @@ if (extrato) {
         if (!total || com !== total) erros.push(`separador Carteira: ${com} de ${total} linhas são da carteira`)
         await p.screenshot({ path: `${PASTA}/${nome}-radar-separador.png`, fullPage: true })
         await p.getByRole('tab', { name: /^Todas/ }).click() // não deixar o separador escolhido para as verificações seguintes
+        // Simulador → Distribuição: as ações da carteira mostram 💼 com o valor investido
+        await p.goto(BASE + '#/simular')
+        await p.waitForSelector('[data-simulador-cada]')
+        await p.getByRole('tab', { name: /💼 Carteira/ }).click()
+        await p.locator('button:visible', { hasText: '+ Distribuição' }).first().click()
+        await p.getByRole('tab', { name: /Distribuição · / }).click()
+        await p.waitForSelector('[data-detalhes-acao]')
+        if (!(await p.locator('[data-detalhes-acao]', { hasText: 'investidos' }).count())) erros.push('a Distribuição não mostra 💼 com o valor investido')
+        if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push('Distribuição com scroll para o lado')
+        await p.screenshot({ path: `${PASTA}/${nome}-distribuicao-carteira.png`, fullPage: true })
       },
     })
   }

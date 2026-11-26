@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AcaoCalculada } from '../lib/calculos'
-import { distribuir, lerNumero, partesIguais, simular } from '../lib/simulador'
+import { distribuir, lerNumero, partesIguais, resumoDistribuicao, simular } from '../lib/simulador'
 
 const acao = (ticker: string, preco: number | null, anualEur: number | null, taxa: number) =>
   ({ ticker, preco_eur: preco, dividendo: { anual_eur: anualEur }, imposto: { taxa } }) as unknown as AcaoCalculada
@@ -38,6 +38,20 @@ describe('simulador', () => {
     expect(distribuir([{ ticker: 'A', pct: 100 }, { ticker: 'X', pct: 0 }], 100, acoes).valida).toBe(false) // 0% não conta
     expect(distribuir([{ ticker: 'A', pct: 50 }, { ticker: 'X', pct: 50 }], 100, acoes).sem_dados).toEqual(['X'])
     expect(distribuir([], 100, acoes).valida).toBe(false)
+  })
+  it('resumo da distribuição por setor, categoria, moeda (da XTB) e nível', () => {
+    const mk = (ticker: string, setor: string | null, categoria: string, moeda: string, nivel: number, xtb?: string) =>
+      ({ ...acao(ticker, 10, 1, 0), setor, categoria, moeda, pais: 'EUA', nivel: { nivel }, cotacao_xtb: xtb ? { moeda: xtb } : undefined }) as unknown as AcaoCalculada
+    const acoes = [mk('A', 'Energia', 'EMPRESA', 'USD', 4), mk('B', 'Energia', 'REIT', 'USD', 6), mk('C', null, 'CEF', 'CAD', 4, 'USD')]
+    const d = distribuir([{ ticker: 'A', pct: 50 }, { ticker: 'B', pct: 30 }, { ticker: 'C', pct: 10 }, { ticker: 'X', pct: 10 }], 1000, acoes)
+    // a X não tem dados: as outras somam 90% e o resumo reparte sobre esses 90%
+    const setor = resumoDistribuicao(d, 'setor')
+    expect(setor.map(s => s.nome)).toEqual(['Energia', 'Sem setor'])
+    expect(setor[0].peso).toBeCloseTo(80 / 90)
+    expect(setor[0].valor).toBeCloseTo(800)
+    expect(resumoDistribuicao(d, 'moeda')).toEqual([expect.objectContaining({ nome: 'USD', peso: 1 })]) // C compra-se em USD na XTB
+    expect(resumoDistribuicao(d, 'nivel').map(s => s.nome)).toEqual(['6', '4']) // do melhor nível para o pior
+    expect(resumoDistribuicao(d, 'categoria', (_, k) => k.toLowerCase()).map(s => s.nome)).toEqual(['empresa', 'reit', 'cef'])
   })
   it('partes iguais somam sempre 100', () => {
     for (const n of [1, 2, 3, 6, 7, 9]) expect(partesIguais(n).reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6)

@@ -6,6 +6,7 @@ import { euros, numero, pct } from '../lib/formato'
 import { gravar, ler } from '../lib/armazenamento'
 import { emPercentagens, META_PADRAO, proporMeta } from '../lib/meta'
 import { lerNumero } from '../lib/simulador'
+import { BarrasPeso } from './Barras'
 import { AVISO_LEGAL, Cartao, EtiquetaCategoria } from './Comuns'
 import { EtiquetaNivel } from './Nivel'
 
@@ -107,17 +108,7 @@ export function MetaRendimento({ abrirNoSimulador }: {
           </Cartao>
 
           <Cartao titulo="Por setor">
-            <ul className="space-y-1.5 text-sm" aria-label="Peso por setor">
-              {r.setores.map(s => (
-                <li key={s.setor} className="grid grid-cols-[minmax(0,10rem)_1fr_3.5rem] items-center gap-2">
-                  <span className="truncate" title={s.setor}>{s.setor}</span>
-                  <span className="h-2.5 rounded bg-slate-100 dark:bg-slate-800">
-                    <span className="block h-2.5 rounded bg-sky-600" style={{ width: `${s.peso * 100}%` }} />
-                  </span>
-                  <span className="text-right">{pct(s.peso, 0)}</span>
-                </li>
-              ))}
-            </ul>
+            <BarrasPeso linhas={r.setores.map(s => ({ nome: s.setor, peso: s.peso, valor: (r.capital ?? 0) * s.peso }))} rotulo="Peso por setor" />
           </Cartao>
         </>
       )}
