@@ -58,7 +58,26 @@ describe('páginas', () => {
     expect(tabela).not.toContain('Pos. 52s')
     expect(html).toContain('>Colunas</button>')
   })
-  it('Favoritos', () => expect(desenhar(<Radar soFavoritos />)).toContain('KO.US'))
+  it('Radar: separador 💼 Carteira só com as ações que tem (e aviso das que não estão no Radar)', () => {
+    expect(desenhar(<Radar />)).toMatch(/💼 Carteira<!-- --> · 1/)
+    const guardado: Record<string, string> = { 'radar.filtros': JSON.stringify({ categoria: 'CARTEIRA' }) }
+    const antes = globalThis.localStorage
+    globalThis.localStorage = { getItem: (k: string) => guardado[k] ?? null, setItem: () => {} } as unknown as Storage
+    const original = ctx.naCarteira
+    try {
+      ctx.naCarteira = new Set(['WU.US', 'XYZ.US'])
+      const html = desenhar(<Radar />)
+      const tabela = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'))
+      expect(tabela).toContain('WU.US')
+      expect(tabela).not.toContain('KO.US')
+      expect(html).toContain('data-carteira-fora-radar')
+      expect(html).toMatch(/1 ação da sua carteira não aparece/)
+    } finally {
+      ctx.naCarteira = original
+      globalThis.localStorage = antes
+    }
+  })
+  it('Favoritos', () =>expect(desenhar(<Radar soFavoritos />)).toContain('KO.US'))
   it('Definições', () => {
     const html = desenhar(<Definicoes />)
     expect(html).toContain('Repor valores por defeito')

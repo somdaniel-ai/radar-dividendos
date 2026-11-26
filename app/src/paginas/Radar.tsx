@@ -37,9 +37,12 @@ const FILTROS_PADRAO: Filtros = {
   esconderForaBatentes: true,
 }
 
+/** Separador especial: só as ações que tem na carteira (não é uma categoria). */
+const CARTEIRA = 'CARTEIRA'
+
 const CATEGORIAS = [
   { v: '', t: 'Todas' }, { v: 'EMPRESA', t: 'Empresas' }, { v: 'REIT', t: 'REIT' }, { v: 'BDC', t: 'BDC' },
-  { v: 'CEF', t: 'Fundos fechados' }, { v: 'ETF', t: 'ETF' },
+  { v: 'CEF', t: 'Fundos fechados' }, { v: 'ETF', t: 'ETF' }, { v: CARTEIRA, t: '💼 Carteira' },
 ]
 
 const ORDENACOES = [
@@ -98,13 +101,20 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
     return { setor: u(a => a.setor), pais: u(a => a.pais), moeda: u(a => a.moeda), frequencia: u(a => a.frequencia) }
   }, [acoes])
 
+  // ações da carteira que não estão no Radar (ex.: deixaram de pagar dividendos)
+  const foraDoRadar = useMemo(() => {
+    const noRadar = new Set(acoes.map(a => a.ticker))
+    return [...naCarteira].filter(t => !noRadar.has(t)).length
+  }, [acoes, naCarteira])
+
   const filtradas = useMemo(() => {
     const t = f.texto.trim().toLowerCase()
     const ymin = num(f.yieldMin), ymax = num(f.yieldMax), pmax = num(f.payoutMax)
     return acoes.filter(a => {
       if (soFavoritos && !favoritos.has(a.ticker)) return false
       if (t && !`${a.ticker} ${a.nome} ${a.ticker_yahoo}`.toLowerCase().includes(t)) return false
-      if (f.categoria && a.categoria !== f.categoria) return false
+      if (f.categoria === CARTEIRA) { if (!naCarteira.has(a.ticker)) return false }
+      else if (f.categoria && a.categoria !== f.categoria) return false
       if (f.setor && a.setor !== f.setor) return false
       if (f.pais && a.pais !== f.pais) return false
       if (f.moeda && a.moeda !== f.moeda) return false
@@ -117,10 +127,11 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
       if (f.soAbaixoJusto && !a.abaixo_preco_justo) return false
       if (f.soAbaixoJustoHist && !a.abaixo_preco_justo_historico) return false
       if (f.esconderArmadilhas && a.armadilhas.length) return false
-      if (f.esconderForaBatentes && a.fora_batentes) return false
+      // na carteira mostra-se sempre o que tem, mesmo fora dos limites de yield
+      if (f.esconderForaBatentes && a.fora_batentes && f.categoria !== CARTEIRA) return false
       return true
     })
-  }, [acoes, f, soFavoritos, favoritos])
+  }, [acoes, f, soFavoritos, favoritos, naCarteira])
 
   const colunas = useMemo(() => [
     col.display({
@@ -259,8 +270,9 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
         </div>
         <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0" role="tablist" aria-label="Categoria">
           {CATEGORIAS.map(c => {
-            const n = c.v ? acoes.filter(a => a.categoria === c.v && (!soFavoritos || favoritos.has(a.ticker))).length : null
-            if (c.v && n === 0) return null
+            const n = c.v ? acoes.filter(a => (c.v === CARTEIRA ? naCarteira.has(a.ticker) : a.categoria === c.v)
+              && (!soFavoritos || favoritos.has(a.ticker))).length : null
+            if (c.v && n === 0 && f.categoria !== c.v) return null // o separador escolhido nunca desaparece
             return (
               <button key={c.v} type="button" role="tab" aria-selected={f.categoria === c.v} onClick={() => muda('categoria', c.v)}
                 className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium ${f.categoria === c.v
@@ -271,6 +283,12 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
             )
           })}
         </div>
+        {f.categoria === CARTEIRA && foraDoRadar > 0 && (
+          <p data-carteira-fora-radar className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            {foraDoRadar === 1 ? '1 ação da sua carteira não aparece' : `${foraDoRadar} ações da sua carteira não aparecem`} no Radar
+            (por exemplo, porque deixou de pagar dividendos). Veja todas em <Link to="/carteira" className="font-medium underline">Carteira</Link>.
+          </p>
+        )}
         {f.categoria === 'CEF' && (
           <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-900">
             ↩️ Nos <b>fundos fechados</b> a distribuição pode incluir <b>devolução de capital</b>: parte do que recebe pode ser o seu próprio dinheiro devolvido, e não rendimento. O yield pode parecer melhor do que é.

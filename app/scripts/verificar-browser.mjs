@@ -181,6 +181,15 @@ if (extrato) {
         await p.goto(BASE + '#/')
         await p.waitForSelector(largura > 700 ? '[data-tabela-radar] tbody tr' : 'ul li a[href*="acao/"]')
         if (!(await p.locator('[aria-label="Na carteira"]').count())) erros.push('o Radar não mostra 💼 nas ações da carteira')
+        // separador "💼 Carteira": só as ações que tem
+        await p.getByRole('tab', { name: /Carteira/ }).click()
+        const linhas = p.locator(largura > 700 ? '[data-tabela-radar] tbody tr' : 'ul li:has(a[href*="acao/"])')
+        await linhas.first().waitFor()
+        const total = await linhas.count()
+        const com = await linhas.filter({ has: p.locator('[aria-label="Na carteira"]') }).count()
+        if (!total || com !== total) erros.push(`separador Carteira: ${com} de ${total} linhas são da carteira`)
+        await p.screenshot({ path: `${PASTA}/${nome}-radar-separador.png`, fullPage: true })
+        await p.getByRole('tab', { name: /^Todas/ }).click() // não deixar o separador escolhido para as verificações seguintes
       },
     })
   }
