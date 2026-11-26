@@ -165,6 +165,7 @@ for (const [nome, largura, altura] of [['projecao-pc', 1366, 900], ['projecao-te
     armazenamento: { 'radar.projecao': JSON.stringify({ fonte: 'manual', capital: 3500, yieldManual: 0.06, mensal: 100, anos: 10 }) },
     extra: async (p, erros) => {
       const fim = async () => p.locator('[data-projecao-fim]').innerText()
+      if (await p.locator('[data-aviso-yield-alto]').count()) erros.push('aviso de yield alto com um yield de 6%')
       const antes = await fim()
       await p.getByLabel('Durante').fill('20')
       const depois = await fim()
@@ -308,6 +309,16 @@ if (extrato) {
         await p.waitForSelector('[data-projecao]')
         await p.getByRole('radio', { name: '💼 A minha carteira' }).click()
         if (!(await p.locator('text=A sua carteira hoje').count())) erros.push('a Projeção não usou a carteira como ponto de partida')
+        // yield de partida acima de 10% → aviso e "Ver cenário prudente" (preço −3%, dividendo 0%)
+        if (await p.locator('[data-aviso-yield-alto]').count()) {
+          const antes = await p.locator('[data-projecao-fim]').innerText()
+          await p.getByRole('button', { name: 'Ver cenário prudente' }).click()
+          if ((await p.getByLabel('Crescimento do preço por ano').inputValue()) !== '-3,0') erros.push('o cenário prudente não pôs o preço a −3%')
+          if ((await p.locator('[data-projecao-fim]').innerText()) === antes) erros.push('o cenário prudente não mudou o resultado')
+          await p.screenshot({ path: `${PASTA}/${nome}-projecao-prudente.png`, fullPage: true })
+          await p.getByRole('button', { name: 'Voltar aos valores anteriores' }).click()
+          if ((await p.locator('[data-projecao-fim]').innerText()) !== antes) erros.push('"Voltar aos valores anteriores" não repôs o resultado')
+        }
         await p.screenshot({ path: `${PASTA}/${nome}-projecao.png`, fullPage: true })
         // Simulador → Distribuição: as ações da carteira mostram 💼 com o valor investido
         await p.goto(BASE + '#/simular')

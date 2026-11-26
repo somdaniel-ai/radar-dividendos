@@ -11,6 +11,10 @@ import { AZUL } from './Barras'
 import { AVISO_LEGAL, Cartao } from './Comuns'
 
 const CINZA = '#64748b'
+/** Acima disto, o yield de partida merece um aviso (yields altos costumam vir com descidas). */
+export const YIELD_ALTO = 0.10
+// o dividendo cai com o preço (o yield mantém-se): valor E rendimento ficam abaixo do cenário normal
+const CENARIO_PRUDENTE = { preco: -0.03, dividendo: -0.03 }
 const K_PROJECAO = 'radar.projecao'
 
 interface Escolhas {
@@ -84,6 +88,13 @@ export function Projecao() {
   useEffect(() => gravar(K_PROJECAO, e), [e])
   const mudar = (p: Partial<Escolhas>) => setE(x => ({ ...x, ...p }))
   const [verTabela, setVerTabela] = useState(false)
+  // "cenário prudente": guarda os valores anteriores para poder voltar a eles
+  const [antesPrudente, setAntesPrudente] = useState<Pick<Escolhas, 'crescPreco' | 'crescDividendo' | 'dividendoHistorico'> | null>(null)
+  const prudente = () => {
+    setAntesPrudente({ crescPreco: e.crescPreco, crescDividendo: e.crescDividendo, dividendoHistorico: e.dividendoHistorico })
+    mudar({ crescPreco: CENARIO_PRUDENTE.preco, crescDividendo: CENARIO_PRUDENTE.dividendo, dividendoHistorico: false })
+  }
+  const voltar = () => { if (antesPrudente) mudar(antesPrudente); setAntesPrudente(null) }
 
   // ponto de partida: carteira, cenário ou manual
   const posicoes = useMemo(() => calcularCarteira(carteira, acoes, params?.impostos), [carteira, acoes, params])
@@ -153,6 +164,23 @@ export function Projecao() {
           </div>
         )}
       </Cartao>
+
+      {yieldLiq > YIELD_ALTO && (
+        <div data-aviso-yield-alto className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-900">
+          <p>
+            ⚠️ <b>Yield de partida alto ({pct(yieldLiq, 1)}).</b> Yields muito altos vêm muitas vezes com <b>descida do preço</b> ou{' '}
+            <b>cortes no dividendo</b>. Experimente um crescimento do preço negativo para ver um resultado mais prudente.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <button type="button" onClick={prudente}
+              className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-700">
+              Ver cenário prudente
+            </button>
+            <span className="text-xs">preço e dividendo a descer {pct(-CENARIO_PRUDENTE.preco, 0)} por ano</span>
+            {antesPrudente && <button type="button" onClick={voltar} className="text-sm underline">Voltar aos valores anteriores</button>}
+          </div>
+        </div>
+      )}
 
       <Cartao titulo="Pressupostos">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -32,6 +32,12 @@ describe('projeção', () => {
     expect(r[10].rendimento_mensal).toBeCloseTo((1000 * 0.06 * 1.05 ** 10) / 12, 6)
   })
 
+  it('cenário prudente (preço e dividendo −3%) fica abaixo do normal no valor E no rendimento', () => {
+    const normal = projetar({ ...base, capital: 2725, mensal: 100, yield_liquido: 0.1347, reinvestir: true, cresc_dividendo: 0.016, cresc_preco: 0.03 })
+    const prudente = projetar({ ...base, capital: 2725, mensal: 100, yield_liquido: 0.1347, reinvestir: true, cresc_dividendo: -0.03, cresc_preco: -0.03 })
+    expect(prudente[10].valor).toBeLessThan(normal[10].valor)
+    expect(prudente[10].rendimento_mensal).toBeLessThan(normal[10].rendimento_mensal)
+  })
   it('entradas mensais somam ao investido', () => {
     const r = projetar({ ...base, capital: 0, mensal: 100, anos: 2 })
     expect(r[2].investido).toBe(2400)
