@@ -140,5 +140,24 @@ describe('carteira', () => {
   it('reimportar não cria duplicados', () => {
     const r = juntar(extrato.transacoes, extrato.transacoes)
     expect([r.todas.length, r.novas, r.repetidas]).toEqual([15, 0, 15])
+    expect(r.substituidas).toEqual([])
+  })
+  it('compra escrita à mão igual a uma do extrato (ação, dia, quantidade) é substituída pela do extrato', () => {
+    const xtb = extrato.transacoes.find(t => t.tipo === 'compra' && t.origem === 'xtb')!
+    const dia = new Date(xtb.data).toLocaleDateString('sv-SE', { timeZone: 'Europe/Lisbon' })
+    const manual = (id: string, extra: Partial<typeof xtb> = {}) => ({
+      ...xtb, id, origem: 'manual' as const, data: `${dia}T12:00:00.000Z`, comentario: undefined, ...extra })
+    const igual = manual('manual-1')
+    const outroDia = manual('manual-2', { data: '2001-01-01T12:00:00.000Z' })
+    const outraQtd = manual('manual-3', { quantidade: (xtb.quantidade ?? 0) + 1 })
+    const r = juntar([igual, outroDia, outraQtd], extrato.transacoes)
+    expect(r.substituidas.map(t => t.id)).toEqual(['manual-1'])
+    expect(r.todas.some(t => t.id === 'manual-1')).toBe(false)
+    expect(r.todas.filter(t => t.id === 'manual-2' || t.id === 'manual-3')).toHaveLength(2)
+    expect(r.todas.filter(t => t.id === xtb.id)).toHaveLength(1)
+    // duas compras à mão iguais: a compra do extrato só substitui uma
+    expect(juntar([igual, manual('manual-4')], extrato.transacoes).substituidas).toHaveLength(1)
+    // também funciona se o extrato já tinha sido importado antes (compra à mão acrescentada depois)
+    expect(juntar([...extrato.transacoes, igual], extrato.transacoes).substituidas.map(t => t.id)).toEqual(['manual-1'])
   })
 })

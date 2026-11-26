@@ -238,7 +238,7 @@ if (extrato) {
         await p.waitForSelector('[data-previa-importacao]', { timeout: 20000 })
         if (!(await p.locator('text=batem certo com a folha').count())) erros.push('a verificação contra Open Positions não bateu certo')
         await p.screenshot({ path: `${PASTA}/${nome}-previa.png` })
-        await p.getByRole('button', { name: /^Importar \d+ operações/ }).click()
+        await p.getByRole('button', { name: /^Importar \d+ operaç(ão|ões)/ }).click()
         await p.waitForSelector('text=Resumo')
         const n = await p.locator('[aria-expanded]').filter({ hasText: 'Quantidade' }).count()
         if (n < 1) erros.push('não apareceram posições')
@@ -258,6 +258,28 @@ if (extrato) {
         if (!total || com !== total) erros.push(`separador Carteira: ${com} de ${total} linhas são da carteira`)
         await p.screenshot({ path: `${PASTA}/${nome}-radar-separador.png`, fullPage: true })
         await p.getByRole('tab', { name: /^Todas/ }).click() // não deixar o separador escolhido para as verificações seguintes
+        // compra escrita à mão igual a uma do extrato: ao reimportar é substituída (não conta duas vezes)
+        if (largura > 700) {
+          await p.evaluate(() => {
+            const c = JSON.parse(localStorage.getItem('radar.carteira'))
+            const i = c.findIndex(t => t.tipo === 'compra' && t.origem === 'xtb')
+            const x = c[i]
+            const dia = new Date(x.data).toLocaleDateString('sv-SE', { timeZone: 'Europe/Lisbon' })
+            c.splice(i, 1, { ...x, id: 'manual-teste', origem: 'manual', data: `${dia}T12:00:00.000Z`, comentario: null })
+            localStorage.setItem('radar.carteira', JSON.stringify(c))
+          })
+          await p.goto(BASE + '#/carteira')
+          await p.reload()
+          await p.waitForSelector('text=Importar o extrato da XTB')
+          await p.locator('[data-importar-extrato]').setInputFiles(`../privado/${extrato}`)
+          await p.waitForSelector('[data-previa-importacao]', { timeout: 20000 })
+          if (!(await p.locator('[data-substituidas]', { hasText: '1 compra que escreveu à mão' }).count())) erros.push('a compra escrita à mão não foi reconhecida como a do extrato')
+          if (!(await p.locator('text=batem certo com a folha').count())) erros.push('depois da substituição, as posições não batem certo')
+          await p.screenshot({ path: `${PASTA}/${nome}-substituicao.png` })
+          await p.getByRole('button', { name: /^Importar \d+ operaç(ão|ões)/ }).click()
+          const manuais = await p.evaluate(() => JSON.parse(localStorage.getItem('radar.carteira')).filter(t => t.id === 'manual-teste').length)
+          if (manuais) erros.push('a compra escrita à mão continua guardada depois de importar')
+        }
         // Simulador → Distribuição: as ações da carteira mostram 💼 com o valor investido
         await p.goto(BASE + '#/simular')
         await p.waitForSelector('[data-simulador-cada]')

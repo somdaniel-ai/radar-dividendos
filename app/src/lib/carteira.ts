@@ -240,8 +240,35 @@ export function verificar(posicoes: Posicao[], abertas: PosicaoAbertaXtb[]): Dif
 }
 
 /** Junta operações novas às guardadas, sem duplicados (pelo ID da XTB). */
-export function juntar(guardadas: Transacao[], novas: Transacao[]): { todas: Transacao[]; novas: number; repetidas: number } {
+/** Data (AAAA-MM-DD) em Lisboa: a XTB regista a hora de Lisboa; as compras manuais guardam só o dia. */
+export const diaLisboa = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Lisbon' })
+
+/** Uma compra escrita à mão que é a mesma que uma compra do extrato: mesma ação, mesmo dia e mesma quantidade. */
+const mesmaCompra = (manual: Transacao, xtb: Transacao) =>
+  manual.ticker === xtb.ticker && manual.quantidade != null && xtb.quantidade != null
+  && Math.abs(manual.quantidade - xtb.quantidade) < 1e-4 && manual.data.slice(0, 10) === diaLisboa(xtb.data)
+
+/**
+ * Junta as operações do extrato às guardadas, sem duplicados:
+ *  - as que já estão guardadas (mesmo ID da XTB) são ignoradas;
+ *  - as compras escritas à mão iguais a uma compra do extrato (mesma ação, dia e quantidade)
+ *    são substituídas pela do extrato (cada compra do extrato substitui no máximo uma).
+ */
+export function juntar(guardadas: Transacao[], novas: Transacao[]): {
+  todas: Transacao[]; novas: number; repetidas: number; substituidas: Transacao[]
+} {
   const ids = new Set(guardadas.map(t => t.id))
   const realmenteNovas = novas.filter(t => !ids.has(t.id))
-  return { todas: [...guardadas, ...realmenteNovas], novas: realmenteNovas.length, repetidas: novas.length - realmenteNovas.length }
+  const manuais = guardadas.filter(t => t.origem === 'manual' && t.tipo === 'compra')
+  const substituidas: Transacao[] = []
+  for (const x of novas) {
+    if (x.origem !== 'xtb' || x.tipo !== 'compra') continue
+    const i = manuais.findIndex(m => mesmaCompra(m, x))
+    if (i >= 0) substituidas.push(...manuais.splice(i, 1))
+  }
+  const fora = new Set(substituidas.map(t => t.id))
+  return {
+    todas: [...guardadas.filter(t => !fora.has(t.id)), ...realmenteNovas],
+    novas: realmenteNovas.length, repetidas: novas.length - realmenteNovas.length, substituidas,
+  }
 }

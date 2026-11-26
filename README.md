@@ -65,6 +65,7 @@ Sem sessão iniciada, tudo fica **só no aparelho**. Com o botão **Entrar** (lo
 2. Na app: **Carteira** → **Importar extrato da XTB** → escolher o ficheiro.
 3. A app mostra uma pré-visualização: quantas operações reconheceu e se as posições calculadas **batem certo** com a folha `Open Positions` do extrato. Só grava se confirmar.
 4. Pode importar outra vez mais tarde: operações repetidas não são duplicadas (cada uma tem o ID da XTB).
+5. Se escreveu uma compra à mão e ela aparecer depois no extrato (mesma ação, mesmo dia e mesma quantidade), a compra à mão é **substituída** pela do extrato, para não contar duas vezes. A pré-visualização mostra quais.
 
 O ficheiro é lido **só no browser**: não é enviado para lado nenhum, e o número de conta nunca é lido. Só as operações (compras, vendas, dividendos, retenções…) vão para a sua conta.
 

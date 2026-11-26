@@ -28,7 +28,7 @@ const mes = (m: string) => new Date(`${m}-01T12:00:00Z`).toLocaleDateString('pt-
 
 // ——— importação ———
 
-interface Previa { extrato: Extrato; novas: number; repetidas: number; diferencas: Diferenca[]; posicoesXtb: number }
+interface Previa { extrato: Extrato; novas: number; repetidas: number; substituidas: Transacao[]; diferencas: Diferenca[]; posicoesXtb: number }
 
 function Importar({ carteira, gravar }: { carteira: Transacao[]; gravar: (t: Transacao[]) => void }) {
   const { acoes } = useApp()
@@ -47,7 +47,7 @@ function Importar({ carteira, gravar }: { carteira: Transacao[]; gravar: (t: Tra
       // a verificação usa só as operações da XTB (as compras manuais não estão na folha Open Positions)
       const xtb = j.todas.filter(t => t.origem === 'xtb')
       const diferencas = verificar(calcularCarteira(xtb, acoes), extrato.posicoes)
-      setPrevia({ extrato, novas: j.novas, repetidas: j.repetidas, diferencas, posicoesXtb: extrato.posicoes.length })
+      setPrevia({ extrato, novas: j.novas, repetidas: j.repetidas, substituidas: j.substituidas, diferencas, posicoesXtb: extrato.posicoes.length })
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e))
     } finally {
@@ -60,7 +60,9 @@ function Importar({ carteira, gravar }: { carteira: Transacao[]; gravar: (t: Tra
     if (!previa) return
     const j = juntar(carteira, previa.extrato.transacoes)
     gravar(j.todas)
-    setFeito(`Importadas ${j.novas} operações novas${j.repetidas ? ` (${j.repetidas} já estavam importadas e foram ignoradas)` : ''}.`)
+    const sub = j.substituidas.length
+    setFeito(`Importadas ${j.novas} operações novas${j.repetidas ? ` (${j.repetidas} já estavam importadas e foram ignoradas)` : ''}`
+      + `${sub ? `; ${sub === 1 ? '1 compra escrita à mão foi substituída' : `${sub} compras escritas à mão foram substituídas`} pela do extrato` : ''}.`)
     setPrevia(null)
   }
 
@@ -84,6 +86,17 @@ function Importar({ carteira, gravar }: { carteira: Transacao[]; gravar: (t: Tra
             Extrato{previa.extrato.gerado_em ? ` de ${data(previa.extrato.gerado_em)}` : ''}: <b>{previa.extrato.transacoes.length}</b> operações —{' '}
             <b>{previa.novas}</b> novas, {previa.repetidas} já importadas.
           </p>
+          {previa.substituidas.length > 0 && (
+            <div data-substituidas className="rounded-lg bg-sky-50 p-2 text-sky-950 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-100 dark:ring-sky-900">
+              <p>
+                {previa.substituidas.length === 1 ? '1 compra que escreveu à mão é a mesma' : `${previa.substituidas.length} compras que escreveu à mão são as mesmas`}{' '}
+                que no extrato (mesma ação, dia e quantidade) e {previa.substituidas.length === 1 ? 'vai ser substituída' : 'vão ser substituídas'} pela do extrato, para não contar duas vezes:
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-xs">
+                {previa.substituidas.map(t => <li key={t.id}><b>{t.ticker}</b> · {data(t.data)} · {numero(t.quantidade, 4)} ações · {euros(-t.valor_eur)}</li>)}
+              </ul>
+            </div>
+          )}
           {previa.posicoesXtb > 0 && (previa.diferencas.length === 0 ? (
             <p className="text-emerald-700 dark:text-emerald-400">
               ✓ Verificação: as {previa.posicoesXtb} posições abertas batem certo com a folha "Open Positions" da XTB (quantidades e preço médio).
@@ -105,9 +118,9 @@ function Importar({ carteira, gravar }: { carteira: Transacao[]; gravar: (t: Tra
             </details>
           )}
           <div className="flex gap-3">
-            <button type="button" onClick={confirmar} disabled={previa.novas === 0}
+            <button type="button" onClick={confirmar} disabled={previa.novas === 0 && previa.substituidas.length === 0}
               className="rounded-lg bg-sky-700 px-4 py-2 font-medium text-white hover:bg-sky-800 disabled:opacity-40">
-              Importar {previa.novas} operações
+              Importar {previa.novas} {previa.novas === 1 ? 'operação' : 'operações'}
             </button>
             <button type="button" onClick={() => setPrevia(null)} className="text-sky-700 underline dark:text-sky-400">Cancelar</button>
           </div>
