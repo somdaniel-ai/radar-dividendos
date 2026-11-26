@@ -67,7 +67,7 @@ function Campo({ caminho, rotulo, tipo, ajuda, opcoes, sufixo }: {
         {tipo === 'hora' && (
           <input type="time" value={String(v ?? '')} aria-label={rotulo} step={60}
             onChange={e => { if (/^\d{2}:\d{2}$/.test(e.target.value)) alterar(caminho, e.target.value) }}
-            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950" />
+            className="w-32 max-w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950" />
         )}
         {tipo === 'select' && (
           <select value={String(v)} onChange={e => alterar(caminho, e.target.value)} aria-label={rotulo}
@@ -128,7 +128,7 @@ function TabelaPaises() {
         setNovo('')
       }}>
         <input value={novo} onChange={e => setNovo(e.target.value)} placeholder="Acrescentar país (ex.: França)"
-          className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950" />
+          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950" />
         <button type="submit" className="rounded-lg bg-slate-900 px-3 py-1 text-sm text-white dark:bg-white dark:text-slate-900">Acrescentar</button>
       </form>
     </div>
@@ -163,14 +163,14 @@ function TiposAlerta() {
   const a = params.alertas as unknown as Record<string, { carteira: boolean; favoritos: boolean }>
   const p = (padrao?.alertas ?? ALERTAS_PADRAO) as unknown as Record<string, { carteira: boolean; favoritos: boolean }>
   return (
-    <table data-tipos-alerta className="mt-2 w-full text-sm">
+    <table data-tipos-alerta className="mt-2 w-full table-fixed text-sm">
       <thead className="text-left text-xs text-slate-500">
-        <tr><th className="py-1 font-normal">Alerta</th><th className="w-20 text-center font-normal">💼 Carteira</th><th className="w-20 text-center font-normal">⭐ Favoritos</th></tr>
+        <tr><th className="py-1 font-normal">Alerta</th><th className="w-[4.5rem] text-center font-normal">💼<br />Carteira</th><th className="w-[4.5rem] text-center font-normal">⭐<br />Favoritos</th></tr>
       </thead>
       <tbody>
         {TIPOS_ALERTA.map(t => (
           <tr key={t.id} className="border-t border-slate-100 dark:border-slate-800">
-            <td className="py-2 pr-2">
+            <td className="py-2 pr-2 break-words">
               <div className="font-medium"><span aria-hidden>{t.emoji}</span> {t.nome}</div>
               <div className="text-xs text-slate-500">{t.ajuda}</div>
               {JSON.stringify(a[t.id]) !== JSON.stringify(p[t.id]) && (

@@ -54,6 +54,16 @@ async function verificar(nome, rota, { largura = 1280, altura = 800, espera, ext
   for (const e of erros) { console.log(`    ${e}`); problemas.push(`${nome}: ${e}`) }
 }
 
+// quando a página fica mais larga do que o ecrã: que elementos saem da margem (para o registo)
+async function quemSai(p, largura) {
+  return p.evaluate(w => [...document.querySelectorAll('body *')]
+    .map(e => ({ e, r: e.getBoundingClientRect() }))
+    .filter(x => x.r.right > w + 1 && x.r.width > 0 && ![...x.e.children].some(f => f.getBoundingClientRect().right > w + 1))
+    .slice(0, 6)
+    .map(x => `${x.e.tagName.toLowerCase()}${x.e.id ? '#' + x.e.id : ''} (${Math.round(x.r.left)}–${Math.round(x.r.right)} px) "${(x.e.getAttribute('aria-label') || x.e.textContent || x.e.getAttribute('placeholder') || '').trim().slice(0, 40)}"`)
+    .join('; '), largura)
+}
+
 // tabela do Radar no PC: cabe na largura (sem scroll para o lado), nada cortado,
 // títulos presos debaixo da barra do topo com o scroll normal da página
 async function tabelaCabe(p, erros) {
@@ -187,7 +197,7 @@ for (const [nome, largura, altura] of [['definicoes-alertas-pc', 1366, 900], ['d
       if (al.yield_limite !== 0.12 || al.vespera_ex?.favoritos !== false || al.hora_envio !== '09:15')
         erros.push(`escolhas não guardadas: ${JSON.stringify(al)}`)
       const w = await p.evaluate(() => document.documentElement.scrollWidth)
-      if (w > largura) erros.push(`a página tem scroll para o lado (${w} > ${largura} px)`)
+      if (w > largura) erros.push(`a página tem scroll para o lado (${w} > ${largura} px): ${await quemSai(p, largura)}`)
       await p.locator('#alertas').scrollIntoViewIfNeeded()
       await p.screenshot({ path: `${PASTA}/${nome}-cartao.png` })
     },
@@ -229,7 +239,7 @@ for (const [nome, largura, altura] of [['meta-pc', 1366, 900], ['meta-telemovel'
     extra: async (p, erros) => {
       const semScroll = async onde => {
         const w = await p.evaluate(() => document.documentElement.scrollWidth)
-        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px)`)
+        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px): ${await quemSai(p, largura)}`)
       }
       await p.getByLabel('Rendimento mensal líquido pretendido').fill('250')
       if (!(await p.locator('text=Capital necessário').count())) { erros.push('a meta não encontrou uma distribuição'); return }
@@ -260,7 +270,7 @@ for (const [nome, largura, altura] of [['simular-pc', 1366, 900], ['simular-tele
     extra: async (p, erros) => {
       const semScroll = async onde => {
         const w = await p.evaluate(() => document.documentElement.scrollWidth)
-        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px)`)
+        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px): ${await quemSai(p, largura)}`)
       }
       await semScroll('cada ação')
       const botoes = p.locator('button:visible', { hasText: '+ Distribuição' })
@@ -298,7 +308,7 @@ for (const [nome, largura, altura] of [['calendario-pc', 1366, 900], ['calendari
     extra: async (p, erros) => {
       const semScroll = async onde => {
         const w = await p.evaluate(() => document.documentElement.scrollWidth)
-        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px)`)
+        if (w > largura) erros.push(`${onde}: a página tem scroll para o lado (${w} > ${largura} px): ${await quemSai(p, largura)}`)
       }
       await p.waitForSelector('[data-vista-lista]')
       const n = await p.locator('[data-vista-lista] [data-evento]').count()
