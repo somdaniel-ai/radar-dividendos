@@ -364,13 +364,13 @@ export function Radar({ soFavoritos = false }: { soFavoritos?: boolean }) {
 
       {/* ordenação (telemóvel) */}
       <div className="flex items-center gap-2 text-sm md:hidden">
-        <label htmlFor="ordem" className="text-slate-500">Ordenar por</label>
+        <label htmlFor="ordem" className="shrink-0 text-slate-500">Ordenar por</label>
         <select id="ordem" value={ordemAtual.id} onChange={e => setOrdem([{ id: e.target.value, desc: ordemAtual.desc }])}
-          className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900">
+          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900">
           {ORDENACOES.map(o => <option key={o.id} value={o.id}>{o.t}</option>)}
         </select>
         <button type="button" onClick={() => setOrdem([{ id: ordemAtual.id, desc: !ordemAtual.desc }])}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 dark:border-slate-700 dark:bg-slate-900"
+          className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 dark:border-slate-700 dark:bg-slate-900"
           aria-label={ordemAtual.desc ? 'Ordem decrescente' : 'Ordem crescente'}>
           {ordemAtual.desc ? '↓' : '↑'}
         </button>
