@@ -35,6 +35,11 @@ class Fornecedor(ABC):
     def obter_cambio(self, moeda: str) -> float | None:
         """Quantos EUR vale 1 unidade de `moeda` (ex.: USD → 0,91)."""
 
+    def obter_composicao(self, ticker: str) -> dict | None:
+        """Composição de um ETF: {'disponivel', 'posicoes': [{'simbolo','nome','peso'}],
+        'setores': [{'setor','peso'}] (nomes em inglês), 'ter'}. None = esta fonte não sabe."""
+        return None
+
     def procurar(self, texto: str) -> list[dict]:
         """Pesquisa por nome/ticker. Devolve [{'simbolo', 'nome', 'bolsa', 'tipo'}]."""
         return []

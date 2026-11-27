@@ -77,6 +77,10 @@ def _ocultar_no_registo(itens: list[dict]) -> OcultarNoRegisto | None:
     return filtro
 
 
+# composições de ETF pedidas de novo por noite (a primeira vez fica repartida por algumas noites)
+LIMITE_COMPOSICOES = 200
+
+
 def _ler_json(caminho: Path, padrao):
     try:
         return json.loads(caminho.read_text(encoding="utf-8"))
@@ -291,6 +295,7 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
 
     novos, sem_dividendos, erros, processados = {}, [], [], set()
     bloqueios, interrompido = 0, None
+    composicoes_pedidas = 0
     n = 0
     while n < len(itens):
         item = itens[n]
@@ -329,6 +334,14 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
             # a mesma empresa noutras bolsas/moedas da XTB (mesmo ISIN), com a versão em EUR primeiro
             if item.get("versoes_xtb"):
                 r["detalhe"]["versoes_xtb"] = item["versoes_xtb"]
+            # ETF: 10 maiores posições, setores e TER (renovados de 30 em 30 dias; no máximo
+            # LIMITE_COMPOSICOES pedidos novos por noite, pela ordem habitual: carteira/favoritos primeiro)
+            if r["resumo"]["categoria"] == "ETF":
+                comp, pedida = cache.composicao(item["ticker_yahoo"], agora, pedir=composicoes_pedidas < LIMITE_COMPOSICOES)
+                composicoes_pedidas += pedida
+                if comp is not None:
+                    r["detalhe"]["composicao"] = {**comp, "setores": [{**x, "setor": termos.setor(x["setor"]) or x["setor"]}
+                                                                     for x in comp.get("setores", [])]}
             # nesta fase só se usam traduções já guardadas; as novas são pedidas no fim,
             # pela ordem da pontuação (as ações do topo do radar primeiro)
             desc = trad.descricao(t, perfil.get("descricao"), so_cache=True)

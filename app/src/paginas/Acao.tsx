@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { ComposicaoEtf } from '../componentes/Composicao'
 import { Link, useParams } from 'react-router-dom'
 import {
   CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -305,6 +306,8 @@ export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
           <Linha rotulo="Variação em 12 meses" valor={pctSinal(a.variacao_12m)} destaque={(a.variacao_12m ?? 0) < 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'} />
         </Cartao>
       </div>
+
+      {a.categoria === 'ETF' && <ComposicaoEtf c={dados.composicao} />}
 
       {/* nota pessoal */}
       <Cartao titulo="As minhas notas">

@@ -154,6 +154,14 @@ export interface AcaoDetalhe extends Acao {
   precos: { semanal: [string, number][]; mensal: [string, number][] }
   /** a mesma empresa/fundo noutras bolsas ou moedas da XTB (mesmo ISIN); EUR primeiro */
   versoes_xtb?: { ticker: string; moeda: string; nome: string }[]
+  /** só nos ETF: 10 maiores posições, setores e custo anual (TER); sem o campo = ainda por obter */
+  composicao?: {
+    disponivel: boolean
+    posicoes: { simbolo: string; nome: string; peso: number }[]
+    setores: { setor: string; peso: number }[]
+    ter: number | null
+    obtida_em: string
+  }
 }
 
 export interface Meta {

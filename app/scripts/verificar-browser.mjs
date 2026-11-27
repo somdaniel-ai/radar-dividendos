@@ -488,6 +488,50 @@ if (extrato) {
   }
 }
 
+// ——— ETF: composição (10 maiores posições, setores, TER), indisponível e ainda por obter ———
+{
+  const etf = radar.acoes.find(a => a.categoria === 'ETF')
+  const comp = {
+    disponivel: true, ter: 0.0022, obtida_em: '2026-11-27T03:10:00+00:00',
+    posicoes: Array.from({ length: 10 }, (_, i) => ({ simbolo: `S${i}`, nome: i === 0 ? 'Uma empresa com um nome comprido de propósito, Inc. Ordinary Shares - Class A' : `Empresa ${i}`, peso: 0.08 - i * 0.005 })),
+    setores: [{ setor: 'Tecnologia', peso: 0.35 }, { setor: 'Serviços Financeiros', peso: 0.18 }, { setor: 'Saúde', peso: 0.12 }],
+  }
+  const casos = [
+    ['etf-composicao-pc', 1280, comp, async (p, erros) => {
+      if ((await p.locator('[data-composicao-etf] li').count()) !== 13) erros.push('não mostrou as 10 posições e os 3 setores')
+      if (!(await p.locator('[data-ter]', { hasText: '0,22%' }).count())) erros.push('não mostrou o TER')
+    }],
+    ['etf-composicao-telemovel', 390, comp, async (p, erros) => {
+      if (!(await p.locator('[data-composicao-etf]', { hasText: 'As 10 maiores posições' }).count())) erros.push('sem as 10 maiores posições')
+    }],
+    ['etf-indisponivel', 390, { disponivel: false, posicoes: [], setores: [], ter: 0.0015, obtida_em: '2026-11-27T03:10:00+00:00' }, async (p, erros) => {
+      if (!(await p.locator('[data-composicao-indisponivel]').count())) erros.push('não disse "composição indisponível"')
+      if (!(await p.locator('[data-ter]', { hasText: '0,15%' }).count())) erros.push('sem o TER quando não há composição')
+    }],
+    ['etf-por-obter', 1280, null, async (p, erros) => {
+      if (!(await p.locator('[data-composicao-etf]', { hasText: 'Ainda por obter' }).count())) erros.push('não disse "ainda por obter"')
+    }],
+  ]
+  if (etf) for (const [nome, largura, c, testar] of casos) {
+    await verificar(nome, `#/acao/${etf.ticker}`, {
+      largura, altura: largura < 500 ? 844 : 800, espera: '[data-composicao-etf]',
+      preparar: ctx => ctx.route(`**/data/acoes/${encodeURIComponent(etf.ticker)}.json`, async rota => {
+        const r = await rota.fetch()
+        const j = await r.json()
+        if (c) j.composicao = c
+        else delete j.composicao
+        await rota.fulfill({ response: r, json: j })
+      }),
+      extra: async (p, erros) => {
+        await testar(p, erros)
+        await p.locator('[data-composicao-etf]').scrollIntoViewIfNeeded()
+        if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push(`scroll para o lado: ${await quemSai(p, largura)}`)
+        await p.locator('[data-composicao-etf]').screenshot({ path: `${PASTA}/${nome}-cartao.png` })
+      },
+    })
+  }
+}
+
 // ——— Simulador: abrir uma ação e voltar para trás → mesmo separador, filtros, pesquisa e posição ———
 for (const [nome, largura] of [['simular-voltar-pc', 1280], ['simular-voltar-telemovel', 390]]) {
   const telemovel = largura < 500

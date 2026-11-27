@@ -85,3 +85,49 @@ def test_acao_com_erro_mantem_versao_anterior(tmp_path):
     r = _radar(saida)
     assert meta["total_radar"] == 3 and [e["ticker"] for e in meta["erros"]] == ["BBB.US"]
     assert r["BBB.US"]["desatualizado"] is True and r["AAA.US"]["desatualizado"] is False
+
+
+class ComETF(Falso):
+    """AAA e BBB são ETF; o Yahoo só tem a composição de AAA."""
+
+    def __init__(self):
+        super().__init__()
+        self.pedidos = []
+
+    def obter_perfil(self, ticker):
+        return {**super().obter_perfil(ticker), "tipo_yahoo": "ETF" if ticker in ("AAA", "BBB") else "EQUITY"}
+
+    def obter_composicao(self, ticker):
+        self.pedidos.append(ticker)
+        if ticker != "AAA":
+            return {"disponivel": False, "posicoes": [], "setores": [], "ter": None}
+        return {"disponivel": True, "posicoes": [{"simbolo": "MSFT", "nome": "Microsoft", "peso": 0.07}],
+                "setores": [{"setor": "Technology", "peso": 0.3}, {"setor": "Real Estate", "peso": 0.1}], "ter": 0.0007}
+
+
+def test_composicao_dos_etf(tmp_path, monkeypatch):
+    uni = _universo(tmp_path / "universo")
+    saida, cache = tmp_path / "data", tmp_path / "cache"
+    f = ComETF()
+    dia1 = dt.datetime(2026, 11, 24, 3, 0, tzinfo=LISBOA)
+    gerar.executar(saida, fornecedor=f, pasta_cache=cache, pasta_universo=uni, agora=dia1)
+    a = json.loads((saida / "acoes" / "AAA.US.json").read_text(encoding="utf-8"))["composicao"]
+    assert a["disponivel"] and a["ter"] == 0.0007 and a["posicoes"][0]["nome"] == "Microsoft"
+    assert [x["setor"] for x in a["setores"]] == ["Tecnologia", "Imobiliário"]  # em português
+    b = json.loads((saida / "acoes" / "BBB.US.json").read_text(encoding="utf-8"))["composicao"]
+    assert b["disponivel"] is False
+    assert "composicao" not in json.loads((saida / "acoes" / "CCC.US.json").read_text(encoding="utf-8"))  # não é ETF
+    assert sorted(f.pedidos) == ["AAA", "BBB"]
+
+    # dentro de 30 dias usa a cópia guardada; depois pede outra vez
+    f.pedidos.clear()
+    gerar.executar(saida, fornecedor=f, pasta_cache=cache, pasta_universo=uni, agora=dia1 + dt.timedelta(days=10))
+    assert f.pedidos == []
+    gerar.executar(saida, fornecedor=f, pasta_cache=cache, pasta_universo=uni, agora=dia1 + dt.timedelta(days=31))
+    assert sorted(f.pedidos) == ["AAA", "BBB"]
+
+    # limite de pedidos novos por noite
+    monkeypatch.setattr(gerar, "LIMITE_COMPOSICOES", 1)
+    f.pedidos.clear()
+    gerar.executar(saida, fornecedor=f, pasta_cache=tmp_path / "cache2", pasta_universo=uni, agora=dia1)
+    assert len(f.pedidos) == 1

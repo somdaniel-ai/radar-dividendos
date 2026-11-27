@@ -311,6 +311,7 @@ Cada ação recebe uma `categoria`, detetada pela descrição do Yahoo:
 | `ETF` | Fundo cotado |
 
 - Para forçar uma categoria, escreva `REIT`, `BDC`, `CEF` ou `ETF` na coluna `tipo` de `universo_xtb.csv`.
+- Os **ETF** mostram na sua página a **composição**: as 10 maiores posições com a percentagem de cada uma, a divisão por setor e o **custo anual (TER)**. Vêm do Yahoo (`funds_data`) e são renovados de 30 em 30 dias, com no máximo 200 pedidos novos por noite (a carteira e os favoritos primeiro). Muitos ETF europeus (UCITS) não têm composição no Yahoo: aparece "composição indisponível", mas o TER existe para quase todos.
 - Os **fundos fechados (CEF)** mostram um aviso: a distribuição pode incluir **devolução de capital**, ou seja, parte do que recebe pode ser o seu próprio dinheiro devolvido, e não rendimento.
 
 ### Como os cálculos funcionam (resumo)

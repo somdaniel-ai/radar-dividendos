@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .fornecedores import Fornecedor
+from .fornecedores import Bloqueado, ErroFornecedor, Fornecedor
 
 log = logging.getLogger(__name__)
 
@@ -138,6 +138,29 @@ class Cache:
         f.write_text(json.dumps({**perfil, "_obtido_em": agora.isoformat(), "_versao": VERSAO_PERFIL},
                                 default=str), encoding="utf-8")
         return perfil
+
+
+    def composicao(self, ticker: str, agora: dt.datetime, pedir: bool = True,
+                   dias: int = 30) -> tuple[dict | None, bool]:
+        """Composição de um ETF, renovada de `dias` em `dias` (muda pouco).
+        Devolve (dados, pedida_agora). Com pedir=False (limite da noite) usa só o que houver."""
+        f = self._dir(ticker) / "composicao.json"
+        guardado = json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+        if guardado and (agora - dt.datetime.fromisoformat(guardado["obtida_em"])).days < dias:
+            return guardado, False
+        if not pedir:
+            return guardado, False
+        try:
+            novo = self.f.obter_composicao(ticker)
+        except Bloqueado:
+            raise
+        except ErroFornecedor:
+            return guardado, False
+        if novo is None:
+            return guardado, False
+        novo = {**novo, "obtida_em": agora.isoformat(timespec="seconds")}
+        f.write_text(json.dumps(novo, ensure_ascii=False), encoding="utf-8")
+        return novo, True
 
 
 def _datas(perfil: dict) -> dict:

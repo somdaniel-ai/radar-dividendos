@@ -18,6 +18,14 @@ log = logging.getLogger(__name__)
 # Moedas "pequenas" em que o Yahoo dá os preços (pence, agorot, cêntimos sul-africanos)
 MOEDAS_CENTIMOS = {"GBp": "GBP", "GBX": "GBP", "ILA": "ILS", "ZAc": "ZAR"}
 
+# setores dos fundos no Yahoo (funds_data.sector_weightings) → os nomes usados nas ações
+SETORES_FUNDOS = {
+    "realestate": "Real Estate", "consumer_cyclical": "Consumer Cyclical", "basic_materials": "Basic Materials",
+    "consumer_defensive": "Consumer Defensive", "technology": "Technology", "communication_services": "Communication Services",
+    "financial_services": "Financial Services", "utilities": "Utilities", "industrials": "Industrials",
+    "energy": "Energy", "healthcare": "Healthcare",
+}
+
 
 def _e_bloqueio(e: Exception) -> bool:
     texto = str(e).lower()
@@ -120,6 +128,39 @@ class Yahoo(Fornecedor):
                 log.error("Câmbio %s indisponível: %s", moeda, e)
                 self._cambios[moeda] = None
         return self._cambios[moeda]
+
+    def obter_composicao(self, ticker):
+        """10 maiores posições, setores e custo anual (TER) de um ETF (yfinance: funds_data).
+        Muitos ETF europeus (UCITS) não têm estes dados no Yahoo → {'disponivel': False}."""
+        self._esperar()
+        try:
+            fd = yf.Ticker(ticker).funds_data
+            top, setores, ops = fd.top_holdings, fd.sector_weightings, fd.fund_operations
+        except Exception as e:  # noqa: BLE001
+            if _e_bloqueio(e):
+                raise Bloqueado(str(e)) from e
+            return {"disponivel": False, "posicoes": [], "setores": [], "ter": None}
+        posicoes = []
+        if top is not None and len(top):
+            for simbolo, linha in top.head(10).iterrows():
+                peso = linha.get("Holding Percent")
+                if peso is not None and peso == peso and peso > 0:
+                    posicoes.append({"simbolo": str(simbolo), "nome": linha.get("Name") or str(simbolo), "peso": round(float(peso), 6)})
+        lista_setores = sorted(({"setor": SETORES_FUNDOS.get(k, k), "peso": round(float(v), 6)}
+                                for k, v in (setores or {}).items() if v and v == v and v > 0),
+                               key=lambda x: -x["peso"])
+        ter = None
+        try:
+            if ops is not None and len(ops):
+                for nome in ("Annual Report Expense Ratio", "Expense Ratio"):
+                    if nome in ops.index:
+                        v = ops.loc[nome].iloc[0]
+                        if v is not None and v == v and 0 < float(v) < 0.2:
+                            ter = round(float(v), 6)
+                            break
+        except (TypeError, ValueError):
+            ter = None
+        return {"disponivel": bool(posicoes or lista_setores), "posicoes": posicoes, "setores": lista_setores, "ter": ter}
 
     def procurar(self, texto):
         try:

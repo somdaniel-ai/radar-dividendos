@@ -7,14 +7,14 @@ export interface LinhaPeso { nome: string; peso: number; valor?: number }
 
 /** Lista de barras horizontais com o peso de cada grupo (Carteira, Meta, Simulador).
  *  Uma só série (azul): a identidade vem do nome escrito, nunca da cor. */
-export function BarrasPeso({ linhas, rotulo }: { linhas: LinhaPeso[]; rotulo: string }) {
+export function BarrasPeso({ linhas, rotulo, nomesLongos = false }: { linhas: LinhaPeso[]; rotulo: string; nomesLongos?: boolean }) {
   const max = Math.max(...linhas.map(l => l.peso), 0.0001)
   return (
     <ul className="space-y-1.5 text-sm" aria-label={rotulo}>
       {linhas.map(l => (
         <li key={l.nome} className="grid grid-cols-[minmax(6rem,10rem)_1fr_auto] items-center gap-2"
           title={`${l.nome}: ${pct(l.peso)}${l.valor != null ? ` · ${euros(l.valor)}` : ''}`}>
-          <span className="truncate">{l.nome}</span>
+          <span className={nomesLongos ? 'line-clamp-2 break-words text-xs leading-snug sm:text-sm' : 'truncate'}>{l.nome}</span>
           <span className="h-3 rounded-r bg-slate-100 dark:bg-slate-800">
             <span className="block h-3 rounded-r" style={{ width: `${(l.peso / max) * 100}%`, background: AZUL }} />
           </span>
