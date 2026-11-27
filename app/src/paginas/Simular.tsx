@@ -16,7 +16,7 @@ import { AgruparPor, BarrasPeso } from '../componentes/Barras'
 import { EtiquetaNivel } from '../componentes/Nivel'
 import { MetaRendimento } from '../componentes/MetaRendimento'
 import { Projecao } from '../componentes/Projecao'
-import { useParametroUrl } from '../lib/posicao'
+import { paramsAtuais, useParametroUrl } from '../lib/posicao'
 
 const K_VALOR = 'radar.simulador.valor'
 const K_RASCUNHO = 'radar.simulador.rascunho'
@@ -485,8 +485,9 @@ export function Simular() {
   const [r, setR] = useState<Rascunho>(() => ({ ...RASCUNHO_VAZIO, ...ler<Partial<Rascunho>>(K_RASCUNHO, {}) }))
   useEffect(() => gravar(K_RASCUNHO, r), [r])
   const naDistribuicao = useMemo(() => new Set(r.linhas.map(l => l.ticker)), [r.linhas])
-  const mudarUrl = (o: { ver?: Separador; modo?: string }) => setParams(p => {
-    const n = new URLSearchParams(p)
+  // (a partir do endereço atual: tem também os filtros guardados por trás, ver useParametroUrl)
+  const mudarUrl = (o: { ver?: Separador; modo?: string }) => setParams(() => {
+    const n = paramsAtuais()
     if (o.ver) { if (o.ver === 'simulador') n.delete('ver'); else n.set('ver', o.ver) }
     if (o.modo) { if (o.modo === 'cada') n.delete('modo'); else n.set('modo', o.modo) }
     return n

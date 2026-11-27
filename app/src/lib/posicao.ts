@@ -1,8 +1,8 @@
 // Posição na página: ao abrir uma página nova começa no topo; ao voltar para trás (botão do
 // browser / gesto do iPhone) volta exatamente à posição onde estava.
 // Também tem ajuda para guardar filtros/pesquisas no endereço (assim o "voltar" repõe-nos).
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { useLocation, useNavigationType, useSearchParams } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLocation, useNavigationType } from 'react-router-dom'
 
 const CHAVE = 'radar.posicoes'
 
@@ -66,15 +66,33 @@ export function usePosicaoPagina() {
   }, [local.key]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-/** Um valor guardado no endereço (ex.: ?q=reit). Mudar não cria passos no histórico. */
+/** Os parâmetros que estão agora no endereço (depois do "#/página?"). */
+export function paramsAtuais(): URLSearchParams {
+  if (typeof window === 'undefined') return new URLSearchParams()
+  const h = window.location.hash
+  const i = h.indexOf('?')
+  return new URLSearchParams(i >= 0 ? h.slice(i + 1) : '')
+}
+
+/** Escreve os parâmetros no endereço SEM avisar o router: a página não é redesenhada (com
+ *  milhares de ações isso atrasava a pesquisa), mas o "voltar" do browser encontra-os lá. */
+function escreverParams(n: URLSearchParams) {
+  const base = window.location.hash.split('?')[0] || '#/'
+  const q = n.toString()
+  const novo = `${window.location.pathname}${window.location.search}${base}${q ? `?${q}` : ''}`
+  if (novo !== `${window.location.pathname}${window.location.search}${window.location.hash}`)
+    window.history.replaceState(window.history.state, '', novo)
+}
+
+/** Um valor guardado no endereço (ex.: ?q=reit), para o "voltar" o repor. Muda logo no ecrã;
+ *  o endereço é atualizado por trás, sem criar passos no histórico. */
 export function useParametroUrl(nome: string, padrao = ''): [string, (v: string) => void] {
-  const [p, setP] = useSearchParams()
-  const valor = p.get(nome) ?? padrao
-  const mudar = useCallback((v: string) => setP(x => {
-    const n = new URLSearchParams(x)
-    if (v === padrao || v === '') n.delete(nome)
-    else n.set(nome, v)
-    return n
-  }, { replace: true }), [setP, nome, padrao])
-  return [valor, mudar]
+  const [valor, setValor] = useState(() => paramsAtuais().get(nome) ?? padrao)
+  useEffect(() => {
+    const n = paramsAtuais()
+    if (valor === padrao || valor === '') n.delete(nome)
+    else n.set(nome, valor)
+    escreverParams(n)
+  }, [valor, nome, padrao])
+  return [valor, setValor]
 }
