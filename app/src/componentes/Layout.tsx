@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/contexto'
 import { dataHora } from '../lib/formato'
 import { saudeAtualizacao } from '../lib/saude'
+import { usePosicaoPagina } from '../lib/posicao'
 import { AVISO_LEGAL } from './Comuns'
 import { BotaoConta } from './Conta'
 import { RedeSeguranca } from './RedeSeguranca'
@@ -23,6 +24,7 @@ const LINKS = [
 export function Layout() {
   const { meta } = useApp()
   const { pathname } = useLocation()
+  usePosicaoPagina()
   // altura da barra do topo (os títulos da tabela do Radar ficam presos logo abaixo dela)
   const topo = useRef<HTMLElement>(null)
   useLayoutEffect(() => {

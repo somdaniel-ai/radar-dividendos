@@ -9,11 +9,14 @@ export const META_PADRAO: Parametros['meta'] = {
   rendimento_mensal_padrao: 100,
   max_empresa: 0.10,
   max_setor: 0.25,
+  max_pais: 1,
   nivel_minimo: 3,
   excluir_armadilhas: true,
+  so_favoritos: false,
 }
 
 export const SEM_SETOR = 'Sem setor'
+export const SEM_PAIS = 'País desconhecido'
 
 export interface LinhaMeta {
   acao: AcaoCalculada
@@ -34,14 +37,16 @@ export interface PropostaMeta {
   /** capital necessário para a meta (EUR) */
   capital: number | null
   setores: { setor: string; peso: number }[]
+  paises: { pais: string; peso: number }[]
   /** quantas ações passaram nos filtros (candidatas) */
   candidatas: number
 }
 
 /** As ações que podem entrar na meta, pela ordem da pontuação (melhor primeiro). */
-export function candidatas(acoes: AcaoCalculada[], m: Parametros['meta']): AcaoCalculada[] {
+export function candidatas(acoes: AcaoCalculada[], m: Parametros['meta'], favoritos?: Set<string>): AcaoCalculada[] {
   return acoes
-    .filter(a => a.preco_eur && a.dividendo.anual_eur != null && (a.yield.liquido ?? 0) > 0
+    .filter(a => (!m.so_favoritos || !!favoritos?.has(a.ticker))
+      && a.preco_eur && a.dividendo.anual_eur != null && (a.yield.liquido ?? 0) > 0
       && !a.fora_batentes
       && a.nivel.nivel >= m.nivel_minimo
       && (!m.excluir_armadilhas || a.armadilhas.length === 0))
@@ -50,21 +55,26 @@ export function candidatas(acoes: AcaoCalculada[], m: Parametros['meta']): AcaoC
 
 /**
  * Pela ordem da pontuação, dá a cada ação o máximo permitido (limite por empresa e o que
- * ainda cabe no setor), até chegar a 100%. Ex.: com 10% por empresa ficam 10 ações.
+ * ainda cabe no setor e no país), até chegar a 100%. Ex.: com 10% por empresa ficam 10 ações.
  */
-export function proporMeta(acoes: AcaoCalculada[], alvoMensal: number, m: Parametros['meta']): PropostaMeta {
-  const lista = candidatas(acoes, m)
+export function proporMeta(acoes: AcaoCalculada[], alvoMensal: number, m: Parametros['meta'], favoritos?: Set<string>): PropostaMeta {
+  const lista = candidatas(acoes, m, favoritos)
+  const maxPais = m.max_pais ?? 1
   const porSetor = new Map<string, number>()
+  const porPais = new Map<string, number>()
   const pesos: { acao: AcaoCalculada; peso: number }[] = []
   let resto = 1
   for (const a of lista) {
     if (resto < 1e-9) break
     const setor = a.setor || SEM_SETOR
+    const pais = a.pais || SEM_PAIS
     const usado = porSetor.get(setor) ?? 0
-    const peso = Math.min(m.max_empresa, m.max_setor - usado, resto)
+    const usadoPais = porPais.get(pais) ?? 0
+    const peso = Math.min(m.max_empresa, m.max_setor - usado, maxPais - usadoPais, resto)
     if (peso < 1e-9) continue
     pesos.push({ acao: a, peso })
     porSetor.set(setor, usado + peso)
+    porPais.set(pais, usadoPais + peso)
     resto -= peso
   }
   const distribuido = 1 - resto
@@ -79,6 +89,7 @@ export function proporMeta(acoes: AcaoCalculada[], alvoMensal: number, m: Parame
   return {
     possivel, distribuido, linhas, yield_liquido: yieldLiq, capital,
     setores: [...porSetor].map(([setor, peso]) => ({ setor, peso })).sort((a, b) => b.peso - a.peso),
+    paises: [...porPais].map(([pais, peso]) => ({ pais, peso })).sort((a, b) => b.peso - a.peso),
     candidatas: lista.length,
   }
 }

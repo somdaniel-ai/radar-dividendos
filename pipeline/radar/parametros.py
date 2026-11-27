@@ -112,8 +112,10 @@ PARAMETROS_PADRAO: dict = {
         "rendimento_mensal_padrao": 100.0,  # € líquidos por mês
         "max_empresa": 0.10,  # máximo por empresa
         "max_setor": 0.25,  # máximo por setor
+        "max_pais": 1.0,  # máximo por país (100% = sem limite)
         "nivel_minimo": 3,  # nível de consistência mínimo (3 = verde médio)
         "excluir_armadilhas": True,
+        "so_favoritos": False,  # a proposta usa só as ações dos favoritos
     },
     # Fase 6 — Alertas (Telegram + app), para as ações da carteira e dos favoritos.
     # Cada tipo pode valer para a carteira e/ou para os favoritos (os dois desligados = desligado).

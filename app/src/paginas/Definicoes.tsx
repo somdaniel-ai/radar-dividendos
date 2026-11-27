@@ -331,9 +331,11 @@ export function Definicoes() {
         <Campo caminho="meta.rendimento_mensal_padrao" rotulo="Rendimento mensal pretendido (por defeito)" tipo="num" sufixo="€" />
         <Campo caminho="meta.max_empresa" rotulo="Máximo por empresa" tipo="pct" ajuda="Ex.: 10% = pelo menos 10 empresas." />
         <Campo caminho="meta.max_setor" rotulo="Máximo por setor" tipo="pct" />
+        <Campo caminho="meta.max_pais" rotulo="Máximo por país" tipo="pct" ajuda="100% = sem limite." />
         <Campo caminho="meta.nivel_minimo" rotulo="Nível de consistência mínimo" tipo="num"
           ajuda="6 = dourado escuro · 5 = dourado claro · 4 = verde escuro · 3 = verde médio · 2 = verde claro · 1 = verde muito claro · 0 = todos." />
         <Campo caminho="meta.excluir_armadilhas" rotulo="Excluir ações com sinais de armadilha" tipo="bool" />
+        <Campo caminho="meta.so_favoritos" rotulo="Só favoritos" tipo="bool" ajuda="A proposta usa apenas as ações dos favoritos." />
       </Cartao>
 
       <Cartao titulo={<span id="alertas">Alertas</span>}>

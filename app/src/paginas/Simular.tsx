@@ -16,6 +16,7 @@ import { AgruparPor, BarrasPeso } from '../componentes/Barras'
 import { EtiquetaNivel } from '../componentes/Nivel'
 import { MetaRendimento } from '../componentes/MetaRendimento'
 import { Projecao } from '../componentes/Projecao'
+import { useParametroUrl } from '../lib/posicao'
 
 const K_VALOR = 'radar.simulador.valor'
 const K_RASCUNHO = 'radar.simulador.rascunho'
@@ -62,7 +63,7 @@ function NomeAcao({ a, ticker }: { a: AcaoCalculada | null; ticker: string }) {
     <div className="min-w-0">
       <Link to={`/acao/${ticker}`} className="font-semibold text-sky-700 dark:text-sky-400">{ticker}</Link>
       {a && <> <EtiquetaCategoria categoria={a.categoria} /></>}
-      {a && <div className="text-xs text-slate-500">{a.nome}</div>}
+      {a && <div className="text-xs text-slate-500"><Link to={`/acao/${ticker}`} className="hover:underline">{a.nome}</Link></div>}
     </div>
   )
 }
@@ -95,11 +96,17 @@ function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => voi
 function CadaAcao({ juntar, naDistribuicao }: { juntar: (t: string) => void; naDistribuicao: Set<string> }) {
   const { acoes, naCarteira, favoritos, params } = useApp()
   const [valor, setValor] = useState<number>(() => ler(K_VALOR, params?.simulador.investimento_padrao ?? 100))
-  const [texto, setTexto] = useState('')
-  const [categoria, setCategoria] = useState('')
-  const [ordem, setOrdem] = useState<keyof typeof ORDENS>('pontos')
-  const [verForaLimites, setVerForaLimites] = useState(false)
-  const [mostrar, setMostrar] = useState(50)
+  // no endereço: ao abrir uma ação e voltar para trás, fica tudo como estava
+  const [texto, setTexto] = useParametroUrl('q')
+  const [categoria, setCategoria] = useParametroUrl('grupo')
+  const [ordemUrl, setOrdem] = useParametroUrl('ordem', 'pontos')
+  const ordem: keyof typeof ORDENS = ordemUrl in ORDENS ? (ordemUrl as keyof typeof ORDENS) : 'pontos'
+  const [foraUrl, setFora] = useParametroUrl('fora')
+  const verForaLimites = foraUrl === '1'
+  const setVerForaLimites = (v: boolean) => setFora(v ? '1' : '')
+  const [mostrarUrl, setMostrarUrl] = useParametroUrl('mostrar', '50')
+  const mostrar = Math.max(50, Number(mostrarUrl) || 50)
+  const setMostrar = (f: number | ((m: number) => number)) => setMostrarUrl(String(typeof f === 'function' ? f(mostrar) : f))
   useEffect(() => gravar(K_VALOR, valor), [valor])
 
   const noGrupo = useCallback((a: AcaoCalculada, g: string) =>
@@ -258,7 +265,9 @@ const nomeGrupo = (por: AgruparDistribuicao, k: string) =>
   por === 'categoria' ? (NOMES_CATEGORIA[k] ?? k) : por === 'nivel' ? `${k} · ${NIVEIS[Number(k)]?.nome ?? ''}` : k
 
 function ResumoDistribuicao({ res }: { res: Distribuicao }) {
-  const [por, setPor] = useState<AgruparDistribuicao>('setor')
+  const [porUrl, setPorUrl] = useParametroUrl('agrupar', 'setor')
+  const por = (GRUPOS_RESUMO.some(([k]) => k === porUrl) ? porUrl : 'setor') as AgruparDistribuicao
+  const setPor = (v: AgruparDistribuicao) => setPorUrl(v)
   const linhas = resumoDistribuicao(res, por, nomeGrupo)
   if (!linhas.length) return null
   return (
@@ -274,8 +283,10 @@ function Distribuicao({ r, mudar }: { r: Rascunho; mudar: (r: Rascunho) => void 
   // quanto já tem investido em cada ação (para o 💼)
   const investido = useMemo(() => new Map(calcularCarteira(carteira, acoes, params?.impostos).map(x => [x.ticker, x.custo_eur])),
     [carteira, acoes, params])
-  const [procura, setProcura] = useState('')
-  const [soFavoritos, setSoFavoritos] = useState(false)
+  const [procura, setProcura] = useParametroUrl('dq')
+  const [favUrl, setFavUrl] = useParametroUrl('dfav')
+  const soFavoritos = favUrl === '1'
+  const setSoFavoritos = (v: boolean) => setFavUrl(v ? '1' : '')
   const [guardado, setGuardado] = useState<string | null>(null)
   const res = useMemo(() => distribuir(r.linhas, r.valor, acoes), [r.linhas, r.valor, acoes])
   const ja = useMemo(() => new Set(r.linhas.map(l => l.ticker)), [r.linhas])

@@ -3,10 +3,10 @@ import type { AcaoCalculada } from '../lib/calculos'
 import { candidatas, emPercentagens, META_PADRAO, proporMeta } from '../lib/meta'
 
 let n = 0
-const acao = (o: { pontos: number; setor?: string | null; y?: number; nivel?: number; armadilhas?: number; fora?: boolean }) => {
+const acao = (o: { pontos: number; setor?: string | null; pais?: string; y?: number; nivel?: number; armadilhas?: number; fora?: boolean }) => {
   const y = o.y ?? 0.05
   return {
-    ticker: `T${++n}`, setor: o.setor === undefined ? 'Energia' : o.setor, preco_eur: 10,
+    ticker: `T${++n}`, setor: o.setor === undefined ? 'Energia' : o.setor, pais: o.pais ?? 'Estados Unidos', preco_eur: 10,
     dividendo: { anual_eur: (10 * y) / 0.7 }, imposto: { taxa: 0.3 }, yield: { liquido: y },
     nivel: { nivel: o.nivel ?? 4 }, armadilhas: Array(o.armadilhas ?? 0).fill({}), fora_batentes: o.fora ? 'acima' : null,
     pontuacao: { total: o.pontos },
@@ -62,5 +62,23 @@ describe('meta de rendimento', () => {
     const p = emPercentagens([1 / 3, 1 / 3, 1 / 3])
     expect(p.reduce((s, x) => s + x, 0)).toBeCloseTo(100, 9)
     expect(p).toEqual([33.34, 33.33, 33.33])
+  })
+
+  it('máximo por país: 20% por país e 20% por empresa → uma ação por país', () => {
+    const lista = ['A', 'B', 'C', 'D', 'E', 'A'].map((pais, i) => acao({ pontos: 90 - i, setor: setores[i % 5], pais }))
+    const r = proporMeta(lista, 100, { ...META_PADRAO, max_empresa: 0.2, max_setor: 1, max_pais: 0.2 })
+    expect(r.possivel).toBe(true)
+    expect(r.linhas).toHaveLength(5)
+    expect(r.paises.every(x => x.peso <= 0.2 + 1e-9)).toBe(true)
+    expect(r.linhas.map(l => l.acao.pontuacao.total)).not.toContain(85)
+  })
+
+  it('só favoritos: usa apenas as ações dos favoritos', () => {
+    const lista = setores.map((s, i) => acao({ pontos: 90 - i, setor: s }))
+    const fav = new Set([lista[3].ticker, lista[4].ticker])
+    const r = proporMeta(lista, 100, { ...META_PADRAO, max_empresa: 0.5, max_setor: 1, so_favoritos: true }, fav)
+    expect(r.linhas.map(l => l.acao.ticker).sort()).toEqual([...fav].sort())
+    expect(r.possivel).toBe(true)
+    expect(candidatas(lista, { ...META_PADRAO, so_favoritos: true }, new Set())).toHaveLength(0)
   })
 })

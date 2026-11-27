@@ -488,6 +488,88 @@ if (extrato) {
   }
 }
 
+// ——— Simulador: abrir uma ação e voltar para trás → mesmo separador, filtros, pesquisa e posição ———
+for (const [nome, largura] of [['simular-voltar-pc', 1280], ['simular-voltar-telemovel', 390]]) {
+  const telemovel = largura < 500
+  await verificar(nome, '#/simular', {
+    largura, altura: telemovel ? 844 : 800, espera: '[data-simulador-cada]',
+    extra: async (p, erros) => {
+      await p.getByRole('tab', { name: /^REIT · / }).click()
+      await p.locator('[data-simulador-cada] select').selectOption('mensal')
+      await p.getByPlaceholder('Pesquisar ticker ou nome…').fill('e')
+      const zona = telemovel ? '[data-simulador-cada] ul' : '[data-simulador-cada] table'
+      const links = p.locator(`${zona} a[href*="/acao/"]`)
+      const alvo = links.nth(Math.min(16, (await links.count()) - 1))
+      await alvo.scrollIntoViewIfNeeded()
+      await p.mouse.wheel(0, 120)
+      await p.waitForTimeout(300)
+      const antes = await p.evaluate(() => window.scrollY)
+      if (antes < 300) erros.push(`não desceu o suficiente para o teste (${antes} px)`)
+      await alvo.click()
+      await p.waitForURL(/#\/acao\//)
+      await p.waitForTimeout(300)
+      if ((await p.evaluate(() => window.scrollY)) > 5) erros.push('a página da ação não abriu no topo')
+      await p.goBack()
+      await p.waitForSelector('[data-simulador-cada]')
+      await p.waitForTimeout(800)
+      if (!(await p.getByRole('tab', { name: /^REIT · / }).getAttribute('aria-selected'))?.includes('true')) erros.push('voltou sem o separador REIT')
+      if ((await p.locator('[data-simulador-cada] select').inputValue()) !== 'mensal') erros.push('voltou sem a ordenação')
+      if ((await p.getByPlaceholder('Pesquisar ticker ou nome…').inputValue()) !== 'e') erros.push('voltou sem a pesquisa')
+      const depois = await p.evaluate(() => window.scrollY)
+      if (Math.abs(depois - antes) > 5) erros.push(`voltou noutra posição (${depois} px em vez de ${antes} px)`)
+      await p.screenshot({ path: `${PASTA}/${nome}-depois.png` })
+      // Distribuição: a lista montada e o "⭐ Favoritos" ficam como estavam
+      await p.getByRole('tab', { name: /^Distribuição/ }).click()
+      const tickers = radar.acoes.slice(0, 3).map(a => a.ticker)
+      for (const t of tickers) {
+        await p.getByLabel('Acrescentar ação').fill(t)
+        await p.locator('ul button', { hasText: t }).first().click()
+      }
+      await p.getByRole('tab', { name: /^⭐ Favoritos/ }).click()
+      await p.locator('[data-simulador-distribuicao] li a[href*="/acao/"]').nth(1).click()
+      await p.waitForURL(/#\/acao\//)
+      await p.goBack()
+      await p.waitForSelector('[data-simulador-distribuicao]')
+      if ((await p.locator('[data-detalhes-acao]').count()) !== 3) erros.push('a distribuição montada não ficou igual')
+      if (!(await p.getByRole('tab', { name: /^⭐ Favoritos/ }).getAttribute('aria-selected'))?.includes('true')) erros.push('voltou sem o "⭐ Favoritos" da Distribuição')
+      if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push(`scroll para o lado: ${await quemSai(p, largura)}`)
+    },
+  })
+}
+
+// ——— Meta: limites com barras deslizantes (a proposta muda logo; ao largar, grava nas Definições) ———
+for (const [nome, largura] of [['meta-limites-pc', 1280], ['meta-limites-telemovel', 390]]) {
+  await verificar(nome, '#/simular?ver=meta', {
+    largura, altura: largura < 500 ? 844 : 800, espera: '[data-limites-meta]',
+    extra: async (p, erros) => {
+      const capital = () => p.locator('[data-numero="capital"]').innerText().catch(() => '')
+      const c0 = await capital()
+      const barra = p.locator('[data-barra="max_empresa"]')
+      await barra.focus()
+      for (let i = 0; i < 5; i++) await p.keyboard.press('ArrowRight')
+      if ((await p.locator('[data-valor-limite="max_empresa"]').innerText()) !== '15%') erros.push('a barra do máximo por empresa não chegou aos 15%')
+      const guardado = await p.evaluate(() => JSON.parse(localStorage.getItem('radar.definicoes') ?? '{}')?.meta?.max_empresa)
+      if (guardado !== 0.15) erros.push(`o limite não ficou gravado nas Definições (${guardado})`)
+      if ((await capital()) === c0) erros.push('o capital necessário não mudou com o limite')
+      const pais = p.locator('[data-barra="max_pais"]')
+      await pais.focus()
+      await p.keyboard.press('Home')
+      if ((await p.locator('[data-valor-limite="max_pais"]').innerText()) !== '10%') erros.push('a barra do máximo por país não desceu aos 10%')
+      await p.screenshot({ path: `${PASTA}/${nome}-pagina.png`, fullPage: true })
+      // sem favoritos, "Só favoritos" não consegue chegar a 100%
+      await p.locator('[data-interruptor="so_favoritos"]').check()
+      if (!(await p.locator('text=desligue «Só favoritos»').count())) erros.push('"Só favoritos" sem favoritos não explicou o que fazer')
+      // as Definições mostram o mesmo valor
+      await p.goto(BASE + '#/definicoes#meta')
+      await p.waitForSelector('#meta')
+      const campo = p.locator('[id="meta.max_empresa"] input').first()
+      const v = await campo.inputValue().catch(() => '')
+      if (!v.startsWith('15')) erros.push(`as Definições mostram ${v} em vez de 15%`)
+      if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push(`scroll para o lado: ${await quemSai(p, largura)}`)
+    },
+  })
+}
+
 // ——— "Atualizar agora" (⟳) com uma sessão a fingir: o Supabase e as Edge Functions são
 // imitados aqui, no browser (nada sai para a internet nem toca na conta verdadeira) ———
 {
