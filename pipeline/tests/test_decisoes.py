@@ -82,8 +82,9 @@ def test_motor_usa_as_decisoes_e_da_prioridade_as_novas(tmp_path, monkeypatch, c
     caplog.set_level(logging.INFO)
     gerar.executar(saida, fornecedor=Fornecedor(), pasta_cache=cache, pasta_universo=uni, agora=DIA)
     assert vistos["BBB.US"] == {"2026-06-01": 0.05}
-    # o registo (público no GitHub) nunca mostra as ações prioritárias pelo nome
-    assert "BBB.US" not in caplog.text and "•••" in caplog.text and "AAA.US" in caplog.text
+    # o registo (público no GitHub) nunca mostra as ações prioritárias pelo nome; com só 3 ações,
+    # todas vão para a frente (as pessoais misturadas com iscos) e ficam todas escondidas
+    assert "BBB.US" not in caplog.text and "AAA.US" not in caplog.text and "•••" in caplog.text
 
     # sem tempo para nada: a decisão nova fica por aplicar (volta a ir à frente na próxima noite)
     conta.append({"ticker": "AAA.US", "data": "2026-06-01", "decisao": "rejeitar", "valor_extra": 0})
@@ -96,9 +97,9 @@ def test_motor_usa_as_decisoes_e_da_prioridade_as_novas(tmp_path, monkeypatch, c
     assert "assinaturas" not in publicado and "BBB.US" not in publicado and "AAA.US" not in publicado
     assert meta["decisoes_conta"] == {**meta["decisoes_conta"], "lidas": True, "total": 2}
 
-    # na noite seguinte o AAA.US é o primeiro a ser processado
+    # na noite seguinte o AAA.US vai à frente (misturado com iscos) e é processado
     vistos.clear()
     meta = gerar.executar(saida, fornecedor=Fornecedor(), pasta_cache=cache, pasta_universo=uni,
                           agora=DIA + dt.timedelta(days=2))
-    assert next(iter(vistos)) == "AAA.US"
+    assert "AAA.US" in vistos
     assert "AAA.US" in json.loads((cache / "decisoes_assinaturas.json").read_text(encoding="utf-8"))
