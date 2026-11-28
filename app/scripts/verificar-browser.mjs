@@ -10,7 +10,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 
 const PORTA = Number(process.env.PORTA_VERIFICAR ?? 4391)
-const BASE = `http://localhost:${PORTA}/radar-dividendos/`
+const CONFIG = JSON.parse(readFileSync(new URL('../../config.json', import.meta.url), 'utf-8'))
+const BASE = `http://localhost:${PORTA}${new URL(CONFIG.site).pathname}`
 const PASTA = 'verificacao'
 const canal = process.env.BROWSER_CANAL ?? (process.platform === 'win32' ? 'msedge' : 'chrome')
 mkdirSync(PASTA, { recursive: true })
@@ -182,7 +183,7 @@ await verificar('definicoes', '#/definicoes', {
   },
 })
 // Alertas: sem sessão pede para entrar; nas Definições, as escolhas ficam guardadas
-await verificar('alertas-sem-sessao', '#/alertas', { espera: 'text=Entre com o GitHub para os ver' })
+await verificar('alertas-sem-sessao', '#/alertas', { espera: 'text=Sem conta não há' })
 for (const [nome, largura, altura] of [['definicoes-alertas-pc', 1366, 900], ['definicoes-alertas-telemovel', 390, 844]]) {
   await verificar(nome, '#/definicoes#alertas', {
     largura, altura, espera: '[data-tipos-alerta]',
@@ -490,7 +491,8 @@ if (extrato) {
 
 // ——— ETF: composição (10 maiores posições, setores, TER), indisponível e ainda por obter ———
 {
-  const etf = radar.acoes.find(a => a.categoria === 'ETF')
+  // um ETF com página de detalhe (no PC, com os dados completos publicados, nem todos a têm)
+  const etf = radar.acoes.find(a => a.categoria === 'ETF' && existsSync(`dist/data/acoes/${a.ticker}.json`))
   const comp = {
     disponivel: true, ter: 0.0022, obtida_em: '2026-11-27T03:10:00+00:00',
     posicoes: Array.from({ length: 10 }, (_, i) => ({ simbolo: `S${i}`, nome: i === 0 ? 'Uma empresa com um nome comprido de propósito, Inc. Ordinary Shares - Class A' : `Empresa ${i}`, peso: 0.08 - i * 0.005 })),
@@ -553,7 +555,10 @@ for (const [nome, largura] of [['simular-voltar-pc', 1280], ['simular-voltar-tel
       await p.waitForURL(/#\/acao\//)
       await p.waitForTimeout(300)
       if ((await p.evaluate(() => window.scrollY)) > 5) erros.push('a página da ação não abriu no topo')
-      await p.goBack()
+      // o link da página da ação (não o botão do browser) volta ao mesmo sítio
+      const voltar = p.locator('[data-voltar]')
+      if ((await voltar.innerText()) !== '← Voltar ao Simulador') erros.push(`o link dizia "${await voltar.innerText()}"`)
+      await voltar.click()
       await p.waitForSelector('[data-simulador-cada]')
       await p.waitForTimeout(800)
       if (!(await p.getByRole('tab', { name: /^REIT · / }).getAttribute('aria-selected'))?.includes('true')) erros.push('voltou sem o separador REIT')
@@ -577,6 +582,122 @@ for (const [nome, largura] of [['simular-voltar-pc', 1280], ['simular-voltar-tel
       if ((await p.locator('[data-detalhes-acao]').count()) !== 3) erros.push('a distribuição montada não ficou igual')
       if (!(await p.getByRole('tab', { name: /^⭐ Favoritos/ }).getAttribute('aria-selected'))?.includes('true')) erros.push('voltou sem o "⭐ Favoritos" da Distribuição')
       if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push(`scroll para o lado: ${await quemSai(p, largura)}`)
+    },
+  })
+}
+
+// ——— "← Voltar a…" da página da ação: texto conforme a origem; aberta diretamente → Radar ———
+for (const [nome, largura] of [['voltar-origem-pc', 1280], ['voltar-origem-telemovel', 390]]) {
+  await verificar(nome, '#/simular?ver=meta', {
+    largura, altura: largura < 500 ? 844 : 800, espera: '[data-limites-meta]',
+    armazenamento: { 'radar.favoritos': JSON.stringify(comDatas) },
+    extra: async (p, erros) => {
+      const casos = [
+        ['#/simular?ver=meta', 'a[href*="/acao/"]', '← Voltar à Meta de rendimento', /ver=meta/],
+        ['#/calendario', 'a[href*="/acao/"]', '← Voltar ao Calendário', /#\/calendario/],
+      ]
+      for (const [url, sel, texto, destino] of casos) {
+        await p.goto(`${BASE}${url}`)
+        const link = p.locator(sel).first()
+        await p.waitForSelector(sel, { timeout: 15000 }).catch(() => {})
+        if (!(await link.count())) { erros.push(`sem ações para abrir em ${url}`); continue }
+        await link.scrollIntoViewIfNeeded()
+        await p.mouse.wheel(0, 200)
+        await p.waitForTimeout(300)
+        const antes = await p.evaluate(() => window.scrollY)
+        await link.click()
+        await p.waitForURL(/#\/acao\//)
+        const v = p.locator('[data-voltar]')
+        await v.waitFor()
+        if ((await v.innerText()) !== texto) erros.push(`${url}: o link dizia "${await v.innerText()}" em vez de "${texto}"`)
+        await v.click()
+        await p.waitForURL(destino)
+        await p.waitForTimeout(800)
+        const depois = await p.evaluate(() => window.scrollY)
+        if (Math.abs(depois - antes) > 5) erros.push(`${url}: voltou noutra posição (${depois} px em vez de ${antes} px)`)
+      }
+      // aberta diretamente (sem página anterior na app): vai para o Radar
+      const t = radar.acoes[0].ticker
+      const nova = await p.context().newPage()
+      await nova.goto(`${BASE}#/acao/${encodeURIComponent(t)}`)
+      const v = nova.locator('[data-voltar]')
+      await v.waitFor()
+      if ((await v.innerText()) !== '← Voltar ao radar') erros.push(`aberta diretamente, o link dizia "${await v.innerText()}"`)
+      await v.click()
+      await nova.waitForURL(u => /#\/?$/.test(u.toString()) || !u.toString().includes('#/acao'))
+      if (nova.url().includes('/acao/')) erros.push('aberta diretamente, o link não foi para o Radar')
+      await nova.close()
+    },
+  })
+}
+
+// ——— Visitante: "Entrar" leva à explicação; erro de registos fechados explicado ———
+for (const [nome, largura] of [['conta-visitante-pc', 1280], ['conta-visitante-telemovel', 390]]) {
+  await verificar(nome, '#/definicoes', {
+    largura, altura: largura < 500 ? 844 : 800, espera: '[data-explicar-conta]',
+    extra: async (p, erros) => {
+      if (largura > 700) {
+        await p.goto(`${BASE}#/`)
+        await p.getByRole('link', { name: 'Entrar', exact: true }).click()
+        await p.waitForURL(/#\/definicoes/)
+      }
+      const ex = p.locator('[data-explicar-conta]')
+      await ex.waitFor()
+      if (!(await ex.innerText()).includes('Sem conta pode usar tudo')) erros.push('sem a explicação para visitantes')
+      // regresso do GitHub com registos fechados
+      await p.goto(`${BASE}?error=access_denied&error_code=signup_disabled&error_description=Signups+not+allowed+for+this+instance#/`)
+      const e = p.locator('[data-erro-entrada]')
+      await e.waitFor({ timeout: 15000 }).catch(() => {})
+      if (!(await e.count()) || !(await e.innerText()).includes('não aceita contas novas')) erros.push('o erro de "registos fechados" não foi explicado')
+      if (p.url().includes('error=')) erros.push('o erro ficou no endereço')
+      await e.scrollIntoViewIfNeeded().catch(() => {})
+      if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push(`scroll para o lado: ${await quemSai(p, largura)}`)
+      await p.screenshot({ path: `${PASTA}/${nome}-erro.png` })
+    },
+  })
+}
+
+// ——— Cópia de segurança: exportar e importar (com revisão antes de repor) ———
+for (const [nome, largura] of [['copia-pc', 1280], ['copia-telemovel', 390]]) {
+  const favsCopia = radar.acoes.slice(0, 4).map(a => a.ticker)
+  await verificar(nome, '#/definicoes', {
+    largura, altura: largura < 500 ? 844 : 800, espera: '[data-copia]',
+    // só na 1.ª abertura (ao recarregar, o teste quer ver os favoritos apagados)
+    preparar: ctx => ctx.addInitScript(f => {
+      if (sessionStorage.getItem('teste.preparado')) return
+      sessionStorage.setItem('teste.preparado', '1')
+      localStorage.setItem('radar.favoritos', JSON.stringify(f))
+      localStorage.setItem('radar.meta.alvo', '300')
+      localStorage.setItem('radar.chave.teste', 'NAO-EXPORTAR')
+    }, favsCopia),
+    extra: async (p, erros) => {
+      const [desc] = await Promise.all([p.waitForEvent('download'), p.locator('[data-exportar]').click()])
+      const caminho = `${PASTA}/${nome}-copia.json`
+      await desc.saveAs(caminho)
+      const texto = readFileSync(caminho, 'utf-8')
+      const j = JSON.parse(texto)
+      if (j.app !== 'radar-dividendos' || j.dados?.favoritos?.length !== 4) erros.push('a cópia exportada não tem os favoritos')
+      if (texto.includes('NAO-EXPORTAR')) erros.push('a cópia levou a sessão!')
+      if (j.aparelho?.['radar.meta.alvo'] !== 300) erros.push('a cópia não levou a meta')
+      // apagar os favoritos e repor a partir da cópia (sem o addInitScript a voltar a pô-los)
+      await p.evaluate(() => localStorage.setItem('radar.favoritos', '[]'))
+      await p.reload()
+      await p.waitForSelector('[data-copia]')
+      await p.locator('[data-copia] input[type=file]').setInputFiles(caminho)
+      const rever = p.locator('[data-rever-copia]')
+      await rever.waitFor()
+      if (!(await rever.innerText()).includes('4 favoritos')) erros.push('a revisão não mostrou o que está na cópia')
+      await rever.scrollIntoViewIfNeeded()
+      if ((await p.evaluate(() => document.documentElement.scrollWidth)) > largura) erros.push(`scroll para o lado: ${await quemSai(p, largura)}`)
+      await p.screenshot({ path: `${PASTA}/${nome}-rever.png` })
+      await p.locator('[data-confirmar-copia]').click()
+      await p.locator('[data-mensagem-copia]').waitFor()
+      const fav = await p.evaluate(() => JSON.parse(localStorage.getItem('radar.favoritos') ?? '[]').length)
+      if (fav !== 4) erros.push(`depois de repor há ${fav} favoritos em vez de 4`)
+      // ficheiro errado
+      await p.locator('[data-copia] input[type=file]').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"a":1}') })
+      await p.waitForTimeout(300)
+      if (!(await p.locator('[data-mensagem-copia]', { hasText: 'não é uma cópia' }).count())) erros.push('um ficheiro errado não foi recusado')
     },
   })
 }
@@ -637,7 +758,7 @@ for (const [nome, largura] of [['meta-limites-pc', 1280], ['meta-limites-telemov
   }
   const inicio = new Date(Date.now() - 12 * 60000).toISOString()
   const preparar = async ctx => {
-    await ctx.route('https://mimdxffecbctnzhskjwh.supabase.co/**', async rota => {
+    await ctx.route(`${CONFIG.supabase_url}/**`, async rota => {
       const r = rota.request(), url = new URL(r.url())
       const json = (corpo, extra = {}) => rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(corpo), ...extra })
       if (url.pathname === '/functions/v1/precos') {

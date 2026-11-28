@@ -261,3 +261,16 @@ def test_filtro_do_registo_esconde_os_simbolos():
     r = logging.LogRecord("x", logging.INFO, "", 0, "[%s/%s] %s (%s) ok; DX.DE e O.US ficam; O tempo; fim DX.", (1, 9, "DX.US", "DX"), None)
     f.filter(r)
     assert r.getMessage() == "[1/9] ••• (•••) ok; DX.DE e O.US ficam; ••• tempo; fim •••."
+
+
+def test_frente_camuflada_mistura_iscos():
+    import random as _r
+    from radar.gerar import frente_camuflada
+    itens = [{"ticker_xtb": f"T{i}"} for i in range(1000)]
+    pessoais = {"T500", "T900", "T7"}
+    r = frente_camuflada(itens, pessoais, _r.Random(1))
+    assert sorted(i["ticker_xtb"] for i in r) == sorted(i["ticker_xtb"] for i in itens)  # nada perdido nem repetido
+    frente = {i["ticker_xtb"] for i in r[:103]}
+    assert pessoais <= frente  # as pessoais vão todas à frente…
+    assert len(frente - pessoais) == 100  # …misturadas com 100 ao acaso
+    assert [i["ticker_xtb"] for i in r[:3]] != ["T7", "T500", "T900"]  # e não ficam juntas no início

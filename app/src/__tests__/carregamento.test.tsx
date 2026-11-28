@@ -31,7 +31,7 @@ const base: Contexto = {
   favoritos: new Set(['KO.US']), alternarFavorito: () => {}, notas: {}, gravarNota: () => {},
   tema: 'auto', setTema: () => {}, carteira: [], gravarCarteira: () => {}, naCarteira: new Set(['WU.US']),
   colunas: {}, gravarColunas: () => {}, decisoes: {}, gravarDecisoes: () => {}, cenarios: {}, gravarCenario: () => {},
-  sessao: null, sync: { estado: 'local', pendentes: 0 }, entrar: async () => {}, sair: async () => {}, sincronizarAgora: () => {}, precosAgora: null, atualizarPrecos: async () => ({ atualizadas: 0, pedidas: 0, falhados: [] }),
+  sessao: null, sync: { estado: 'local', pendentes: 0 }, entrar: async () => {}, sair: async () => {}, sincronizarAgora: () => {}, precosAgora: null, atualizarPrecos: async () => ({ atualizadas: 0, pedidas: 0, falhados: [] }), dadosPessoais: () => ({ definicoes: null, favoritos: [], notas: {}, carteira: [], decisoes: {}, cenarios: {} }), importarDados: () => {},
 }
 const aCarregar: Contexto = { ...base, aCarregar: true, params: null, padrao: null, acoes: [], meta: null }
 

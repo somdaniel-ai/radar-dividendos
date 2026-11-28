@@ -4,11 +4,18 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// No GitHub Pages a app fica em https://somdaniel-ai.github.io/radar-dividendos/
-const base = process.env.BASE_URL_APP ?? '/radar-dividendos/'
+import { readFileSync } from 'node:fs'
+
+// Configuração pública num só sítio: config.json na raiz do repositório (também usado pelo motor).
+const config = JSON.parse(readFileSync(new URL('../config.json', import.meta.url), 'utf-8'))
+// No GitHub Pages a app fica no endereço "site" do config.json (ex.: /radar-dividendos/)
+const base = process.env.BASE_URL_APP ?? new URL(config.site).pathname
 
 export default defineConfig({
   base,
+  define: {
+    __CONFIG__: JSON.stringify({ site: config.site, repositorio: config.repositorio, supabase_url: config.supabase_url, supabase_chave_publica: config.supabase_chave_publica }),
+  },
   plugins: [
     react(),
     tailwindcss(),

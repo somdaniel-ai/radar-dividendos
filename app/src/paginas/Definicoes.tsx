@@ -8,6 +8,7 @@ import { numero } from '../lib/formato'
 import type { ImpostoPais, Parametros } from '../tipos'
 import { EscolherColunas } from '../componentes/Colunas'
 import { CartaoConta } from '../componentes/Conta'
+import { CartaoCopia } from '../componentes/Copia'
 import { useColunas } from '../lib/colunas'
 import { ALERTAS_PADRAO, TIPOS_ALERTA } from '../lib/alertas'
 
@@ -226,6 +227,8 @@ export function Definicoes() {
       </div>
 
       <CartaoConta />
+
+      <CartaoCopia />
 
       <Cartao titulo="Aparência">
         <div className="flex flex-wrap gap-2">

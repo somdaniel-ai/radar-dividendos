@@ -2,7 +2,7 @@
 // browser / gesto do iPhone) volta exatamente à posição onde estava.
 // Também tem ajuda para guardar filtros/pesquisas no endereço (assim o "voltar" repõe-nos).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useLocation, useNavigationType } from 'react-router-dom'
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
 const CHAVE = 'radar.posicoes'
 
@@ -20,10 +20,53 @@ function gravarPosicao(chave: string, y: number) {
   } catch { /* modo privado: ignora */ }
 }
 
+// ——— Origem: de que página da app se chegou a cada entrada do histórico ———
+const CHAVE_ORIGENS = 'radar.origens'
+export type Origem = { caminho: string; ver?: string }
+
+function lerOrigens(): Record<string, Origem> {
+  try { return JSON.parse(sessionStorage.getItem(CHAVE_ORIGENS) ?? '{}') } catch { return {} }
+}
+function gravarOrigem(chave: string, o: Origem) {
+  try {
+    const t = lerOrigens()
+    t[chave] = o
+    const ks = Object.keys(t)
+    for (const k of ks.slice(0, Math.max(0, ks.length - 50))) delete t[k]
+    sessionStorage.setItem(CHAVE_ORIGENS, JSON.stringify(t))
+  } catch { /* modo privado: ignora */ }
+}
+
+/** O texto do link "← Voltar …" conforme a página de onde se veio. */
+export function textoOrigem(o: Origem | null | undefined): string {
+  if (!o) return 'ao radar'
+  const c = o.caminho
+  if (c === '/') return 'ao radar'
+  if (c === '/favoritos') return 'aos Favoritos'
+  if (c === '/carteira') return 'à Carteira'
+  if (c === '/simular') return o.ver === 'meta' ? 'à Meta de rendimento' : o.ver === 'projecao' ? 'à Projeção' : 'ao Simulador'
+  if (c === '/calendario') return 'ao Calendário'
+  if (c === '/alertas') return 'aos Alertas'
+  if (c === '/definicoes') return 'às Definições'
+  if (c === '/sobre') return 'à página Sobre'
+  if (c.startsWith('/acao/')) return `à ação ${decodeURIComponent(c.slice(6))}`
+  return 'à página anterior'
+}
+
+/** Página da app de onde se chegou aqui (null se a página foi aberta diretamente por um link). */
+export function useOrigem(): { texto: string; voltar: (() => void) | null } {
+  const { key } = useLocation()
+  const navegar = useNavigate()
+  const o = lerOrigens()[key]
+  // voltar com o histórico (como o botão do browser): repõe separador, filtros e posição
+  return { texto: textoOrigem(o), voltar: o ? () => navegar(-1) : null }
+}
+
 export function usePosicaoPagina() {
   const local = useLocation()
   const tipo = useNavigationType()
   const atual = useRef(local.key)
+  const anterior = useRef<{ key: string; pathname: string; search: string } | null>(null)
 
   // o browser não deve tentar sozinho (com páginas que carregam aos poucos, falha)
   useEffect(() => {
@@ -49,6 +92,11 @@ export function usePosicaoPagina() {
   useLayoutEffect(() => {
     // já é a página nova: o scroll que vem a seguir (topo, reposição) é desta página
     atual.current = local.key
+    // de que página se veio (para o "← Voltar a…" da página da ação)
+    const ant = anterior.current
+    if (ant && tipo === 'PUSH') gravarOrigem(local.key, { caminho: ant.pathname, ver: new URLSearchParams(ant.search).get('ver') ?? undefined })
+    else if (ant && tipo === 'REPLACE') { const o = lerOrigens()[ant.key]; if (o) gravarOrigem(local.key, o) }
+    anterior.current = { key: local.key, pathname: local.pathname, search: local.search }
     // mudanças só de filtros (replace) não mexem na posição
     if (tipo === 'REPLACE') return
     if (tipo === 'PUSH') { window.scrollTo(0, 0); return }

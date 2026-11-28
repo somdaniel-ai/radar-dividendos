@@ -1,0 +1,7 @@
+{
+  "_leia_me": "Configuração da app num só sítio. Tudo aqui é PÚBLICO (vai dentro da app). Nunca pôr aqui chaves secretas, tokens nem palavras-passe: esses vão para os Secrets do GitHub ou do Supabase.",
+  "site": "https://somdaniel-ai.github.io/radar-dividendos/",
+  "repositorio": "somdaniel-ai/radar-dividendos",
+  "supabase_url": "https://mimdxffecbctnzhskjwh.supabase.co",
+  "supabase_chave_publica": "sb_publishable_UiTkJf1X_KLJgVceus7S5A_9d-RK3sy"
+}

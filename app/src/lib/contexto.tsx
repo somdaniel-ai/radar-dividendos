@@ -14,6 +14,7 @@ import {
   type Cenario, type DadosPessoais, type Decisao, type Operacao,
 } from './sincronizar'
 import { enderecoRegresso, haSessaoGuardada, obterCliente } from './supabase'
+import { operacoesSubstituir } from './copia'
 
 export type Tema = 'auto' | 'claro' | 'escuro'
 
@@ -67,6 +68,9 @@ export interface Contexto {
   precosAgora: PrecosAgora | null
   /** pede os preços atuais das ações da carteira e dos favoritos; devolve quantas vieram */
   atualizarPrecos: () => Promise<{ atualizadas: number; pedidas: number; falhados: string[] }>
+  /** cópia de segurança: os dados pessoais atuais, e repor tudo a partir de uma cópia */
+  dadosPessoais: () => DadosPessoais
+  importarDados: (d: DadosPessoais) => void
 }
 
 export const ContextoApp = createContext<Contexto | null>(null)
@@ -306,6 +310,14 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message)
   }, [ligarCliente])
 
+  const dadosPessoais = useCallback(() => paraDados(atual.current), [])
+  // repõe tudo como na cópia (o que não está nela é apagado); com sessão, a conta fica igual
+  const importarDados = useCallback((d: DadosPessoais) => {
+    const antes = paraDados(atual.current)
+    const alvo: DadosPessoais = { ...d, definicoes: d.definicoes ?? { parametros: {}, colunas: atual.current.colunas, tema: atual.current.tema } }
+    mudar(deDados(alvo, atual.current), operacoesSubstituir(antes, alvo))
+  }, [mudar])
+
   const sair = useCallback(async () => {
     await cliente.current?.auth.signOut()
     // os dados ficam na conta; neste aparelho apaga-se a cópia (pode ser um aparelho partilhado)
@@ -398,7 +410,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     carteira: pessoal.carteira, gravarCarteira, naCarteira,
     colunas: pessoal.colunas, gravarColunas, decisoes: pessoal.decisoes, gravarDecisoes,
     cenarios: pessoal.cenarios, gravarCenario,
-    sessao, sync, entrar, sair, sincronizarAgora, precosAgora, atualizarPrecos,
+    sessao, sync, entrar, sair, sincronizarAgora, precosAgora, atualizarPrecos, dadosPessoais, importarDados,
   }
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>
 }

@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import logging
 import os
+import random
 import re
 import sys
 import time
@@ -28,6 +29,7 @@ from . import universo as uni
 from . import xtb
 from .agenda import Triagem
 from .analisar import analisar
+from .supabase_config import URL_APP
 from .cache import Cache
 from .fornecedores import ErroFornecedor, Fornecedor
 from .fornecedores.base import Bloqueado
@@ -65,6 +67,25 @@ class OcultarNoRegisto(logging.Filter):
             if novo != texto:
                 record.msg, record.args = novo, None
         return True
+
+
+def n_iscos(n_pessoais: int, total: int) -> int:
+    """Quantas ações ao acaso vão misturadas com as pessoais (5 por cada uma, no mínimo 100)."""
+    return max(0, min(total - n_pessoais, max(100, 5 * n_pessoais)))
+
+
+def frente_camuflada(itens: list[dict], primeiro: set[str], rng: random.Random | None = None) -> list[dict]:
+    """Põe à frente as ações pessoais (carteira, favoritos, decisões novas) MISTURADAS com ações
+    ao acaso ("iscos"). Se a atualização parar a meio, os dados públicos mostram dados novos num
+    grupo onde não se distingue o que é pessoal do que não é."""
+    rng = rng or random.SystemRandom()
+    pessoais = [i for i in itens if i["ticker_xtb"] in primeiro]
+    outros = [i for i in itens if i["ticker_xtb"] not in primeiro]
+    iscos = rng.sample(outros, n_iscos(len(pessoais), len(itens)))
+    frente = pessoais + iscos
+    rng.shuffle(frente)
+    usados = {i["ticker_xtb"] for i in iscos}
+    return frente + [i for i in outros if i["ticker_xtb"] not in usados]
 
 
 def _ocultar_no_registo(itens: list[dict]) -> OcultarNoRegisto | None:
@@ -126,7 +147,7 @@ def _descobrir(f: Fornecedor, cache: Cache, item: dict, hoje: dt.date, pasta_uni
     raise ErroFornecedor("Símbolo não encontrado no Yahoo")
 
 
-URL_PUBLICA = os.environ.get("RADAR_URL_PUBLICA", "https://somdaniel-ai.github.io/radar-dividendos/data/")
+URL_PUBLICA = os.environ.get("RADAR_URL_PUBLICA", f"{URL_APP}data/")
 
 
 def _traducoes_guardadas(saida: Path, pasta_cache: Path) -> dict | None:
@@ -286,10 +307,13 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
         # e as da carteira e dos favoritos também (os alertas usam dados desta noite)
         primeiro = decisoes_mudaram | do_interesse
         if primeiro:
-            frente = [i for i in todos if i["ticker_xtb"] in decisoes_mudaram] +                      [i for i in todos if i["ticker_xtb"] in do_interesse - decisoes_mudaram]
-            itens = frente + [i for i in itens if i["ticker_xtb"] not in primeiro]
-    # dados pessoais: estas ações nunca aparecem pelo nome no registo (público) do GitHub
-    filtro_registo = _ocultar_no_registo([i for i in todos if i["ticker_xtb"] in (decisoes_mudaram | do_interesse)])
+            itens = frente_camuflada(itens, primeiro)
+    # dados pessoais: as ações da frente (as pessoais e os iscos) nunca aparecem pelo nome no
+    # registo (público) do GitHub, por isso nem se vê quantas são as pessoais
+    frente_registo = decisoes_mudaram | do_interesse
+    if not tickers and not limite and frente_registo:
+        frente_registo = {i["ticker_xtb"] for i in itens[:len(frente_registo) + n_iscos(len(frente_registo), len(itens))]}
+    filtro_registo = _ocultar_no_registo([i for i in todos if i["ticker_xtb"] in frente_registo])
     agendados = len(itens)
     prazo = None if (tickers or limite) else inicio + (minutos if minutos is not None else _minutos_dados()) * 60
 

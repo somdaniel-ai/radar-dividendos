@@ -10,6 +10,7 @@ import { EtiquetaNivel, Legenda } from '../componentes/Nivel'
 import { recalcular } from '../lib/calculos'
 import { useApp } from '../lib/contexto'
 import { lerAcao, usePedido } from '../lib/dados'
+import { useOrigem } from '../lib/posicao'
 import { data, dataHora, dias, euros, grande, moeda, numero, pct, pctSinal } from '../lib/formato'
 import type { AcaoDetalhe } from '../tipos'
 
@@ -96,6 +97,7 @@ function VersoesXtb({ versoes, atual }: { versoes: { ticker: string; moeda: stri
 }
 
 export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
+  const origem = useOrigem()
   const { params, hoje, favoritos, alternarFavorito, notas, gravarNota } = useApp()
   const [vistaPreco, setVistaPreco] = useState<'5a' | 'sempre'>('5a')
   const [verLegenda, setVerLegenda] = useState(false)
@@ -119,7 +121,9 @@ export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
 
   return (
     <div className="space-y-3">
-      <Link to="/" className="text-sm text-sky-700 dark:text-sky-400">← Voltar ao radar</Link>
+      <Link to="/" data-voltar className="text-sm text-sky-700 dark:text-sky-400"
+        onClick={e => { if (origem.voltar && !e.metaKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); origem.voltar() } }}>
+        ← Voltar {origem.texto}</Link>
 
       {/* cabeçalho */}
       <Cartao>

@@ -42,7 +42,7 @@ function ItemAlerta({ a, abrir }: { a: Alerta; abrir: (a: Alerta) => void }) {
 }
 
 export function Alertas() {
-  const { sessao, entrar, params, hoje } = useApp()
+  const { sessao, params, hoje } = useApp()
   const [alertas, setAlertas] = useState<Alerta[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [soPorLer, setSoPorLer] = useState(false)
@@ -88,9 +88,9 @@ export function Alertas() {
 
       {!sessao ? (
         <Cartao>
-          <p className="text-sm">Os alertas ficam guardados na sua conta. Entre com o GitHub para os ver.</p>
-          <button type="button" onClick={() => void entrar()}
-            className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-slate-900">Entrar com o GitHub</button>
+          <p className="text-sm">Os alertas são enviados para o Telegram do dono da app e ficam guardados na conta dele. Sem conta não há
+            alertas, mas pode ter os seus numa cópia própria da app.</p>
+          <Link to="/definicoes#conta" className="mt-3 inline-block text-sm text-sky-700 underline dark:text-sky-400">Saber mais sobre a conta</Link>
         </Cartao>
       ) : erro ? (
         <Cartao>

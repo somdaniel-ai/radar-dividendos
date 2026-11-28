@@ -57,7 +57,7 @@ jobs:
       - name: Manter o Supabase acordado
         continue-on-error: true
         run: |
-          curl -fsS -X POST "https://mimdxffecbctnzhskjwh.supabase.co/rest/v1/rpc/ping"             -H "apikey: sb_publishable_UiTkJf1X_KLJgVceus7S5A_9d-RK3sy" -H "Content-Type: application/json" -d '{}'             && echo " ← Supabase acordado"
+          curl -fsS -X POST "$(jq -r .supabase_url config.json)/rest/v1/rpc/ping"             -H "apikey: $(jq -r .supabase_chave_publica config.json)" -H "Content-Type: application/json" -d '{}'             && echo " ← Supabase acordado"
 
       - uses: actions/setup-python@v5
         with:
