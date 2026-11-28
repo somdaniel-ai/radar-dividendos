@@ -7,7 +7,7 @@ import {
 import { GraficoDividendos } from '../componentes/GraficoDividendos'
 import { Carregando, Cartao, Erro, Estrela, EtiquetaCategoria, ListaSinais } from '../componentes/Comuns'
 import { EtiquetaNivel, Legenda } from '../componentes/Nivel'
-import { recalcular } from '../lib/calculos'
+import { recalcular, semDecididos } from '../lib/calculos'
 import { useApp } from '../lib/contexto'
 import { lerAcao, usePedido } from '../lib/dados'
 import { useOrigem } from '../lib/posicao'
@@ -98,12 +98,16 @@ function VersoesXtb({ versoes, atual }: { versoes: { ticker: string; moeda: stri
 
 export function VistaAcao({ dados }: { dados: AcaoDetalhe }) {
   const origem = useOrigem()
-  const { params, hoje, favoritos, alternarFavorito, notas, gravarNota } = useApp()
+  const { params, hoje, favoritos, alternarFavorito, notas, gravarNota, decisoes } = useApp()
   const [vistaPreco, setVistaPreco] = useState<'5a' | 'sempre'>('5a')
   const [verLegenda, setVerLegenda] = useState(false)
   const [verOriginal, setVerOriginal] = useState(false)
 
-  const a = useMemo(() => (dados && params ? { ...dados, ...recalcular(dados, params, hoje) } : null), [dados, params, hoje])
+  const a = useMemo(() => {
+    if (!dados || !params) return null
+    const d = semDecididos(dados, decisoes)
+    return { ...d, ...recalcular(d, params, hoje) }
+  }, [dados, params, hoje, decisoes])
 
   const serie = useMemo(() => {
     if (!dados) return []

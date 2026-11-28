@@ -33,6 +33,8 @@ const problemas = []
 const browser = await chromium.launch({ channel: canal, headless: true })
 
 async function verificar(nome, rota, { largura = 1280, altura = 800, espera, extra, armazenamento, preparar } = {}) {
+  // VERIFICAR_SO=meta-pc,meta-telemovel → corre só estas (para investigar uma falha)
+  if (process.env.VERIFICAR_SO && !process.env.VERIFICAR_SO.split(',').includes(nome)) return
   const ctx = await browser.newContext({ viewport: { width: largura, height: altura }, serviceWorkers: 'block' })
   if (preparar) await preparar(ctx)
   if (armazenamento) await ctx.addInitScript(o => { for (const [k, v] of Object.entries(o)) localStorage.setItem(k, v) }, armazenamento)
@@ -256,8 +258,12 @@ for (const [nome, largura, altura] of [['meta-pc', 1366, 900], ['meta-telemovel'
       const soma2 = await p.locator('[data-soma-pct]').innerText()
       if (!soma2.includes('✓')) erros.push(`depois de juntar os favoritos não soma 100% (${soma2})`)
       await p.getByRole('tab', { name: 'Cada ação' }).click()
+      // a troca de vista pode demorar com milhares de ações: esperar pela vista nova, senão o clique
+      // seguinte pode cair no "⭐ Favoritos" da Distribuição, que ainda está no ecrã (falha intermitente)
+      await p.waitForSelector('[data-simulador-cada]')
       await p.getByRole('tab', { name: `⭐ Favoritos · ${favs.length}` }).click()
-      const linhas = await p.locator(largura > 700 ? '[data-simulador-cada] tbody tr' : '[data-simulador-cada] ul > li').count()
+      const sel = largura > 700 ? '[data-simulador-cada] tbody tr' : '[data-simulador-cada] ul > li'
+      const linhas = await p.locator(sel).count()
       if (linhas !== favs.length) erros.push(`separador Favoritos: ${linhas} linhas em vez de ${favs.length}`)
       await semScroll('favoritos')
       await p.screenshot({ path: `${PASTA}/${nome}-favoritos.png`, fullPage: true })
@@ -700,6 +706,32 @@ for (const [nome, largura] of [['copia-pc', 1280], ['copia-telemovel', 390]]) {
       if (!(await p.locator('[data-mensagem-copia]', { hasText: 'não é uma cópia' }).count())) erros.push('um ficheiro errado não foi recusado')
     },
   })
+}
+
+// ——— Possíveis extraordinários já decididos na app: o aviso público fica, mas a app esconde-o ———
+{
+  const comSusp = radar.acoes.find(a => a.extraordinarios_suspeitos?.length === 1 && existsSync(`dist/data/acoes/${a.ticker}.json`))
+  if (comSusp) {
+    const s0 = comSusp.extraordinarios_suspeitos[0]
+    const decisoes = { [`${comSusp.ticker}|${s0.data}`]: { decisao: 'rejeitar', valor_extra: 0, em: '2026-11-28T00:00:00Z' } }
+    await verificar('extra-decidido', `#/acao/${encodeURIComponent(comSusp.ticker)}`, {
+      largura: 390, altura: 844, espera: '[data-voltar]',
+      armazenamento: { 'radar.extraordinarios.decisoes': JSON.stringify(decisoes) },
+      extra: async (p, erros) => {
+        await p.waitForTimeout(500)
+        const txt = await p.locator('main').innerText()
+        if (txt.includes('Possíveis extraordinários (a confirmar)')) erros.push('a página ainda mostra o aviso já decidido')
+        if (txt.includes('possível(eis) dividendo(s) extraordinário(s)')) erros.push('o sinal ❓ ainda aparece')
+      },
+    })
+    await verificar('extra-por-decidir', `#/acao/${encodeURIComponent(comSusp.ticker)}`, {
+      largura: 390, altura: 844, espera: '[data-voltar]',
+      extra: async (p, erros) => {
+        await p.waitForTimeout(500)
+        if (!(await p.locator('main').innerText()).includes('Possíveis extraordinários (a confirmar)')) erros.push('sem decisão, o aviso devia aparecer')
+      },
+    })
+  }
 }
 
 // ——— Meta: limites com barras deslizantes (a proposta muda logo; ao largar, grava nas Definições) ———

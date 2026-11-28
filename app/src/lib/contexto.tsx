@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Acao, Meta, Parametros } from '../tipos'
 import { apagar, gravar, ler } from './armazenamento'
-import { recalcular, type AcaoCalculada } from './calculos'
+import { recalcular, semDecididos, type AcaoCalculada } from './calculos'
 import { CHAVE_COLUNAS, lerColunas } from './colunas'
 import { lerMeta, lerPadrao, lerRadar } from './dados'
 import { ALERTAS_PADRAO } from './alertas'
@@ -338,8 +338,8 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     [precosGuardados, meta?.gerado_em])
   const acoes = useMemo(() => {
     if (!radar || !params) return []
-    return aplicarPrecos(radar, precosAgora).map(a => recalcular(a, params, hoje))
-  }, [radar, params, hoje, precosAgora])
+    return aplicarPrecos(radar, precosAgora).map(a => recalcular(semDecididos(a, pessoal.decisoes), params, hoje))
+  }, [radar, params, hoje, precosAgora, pessoal.decisoes])
 
   const alterar = useCallback((caminho: string, valor: unknown) => {
     mudarDefinicoes({ alteracoes: definirEm(atual.current.alteracoes, caminho, valor) })

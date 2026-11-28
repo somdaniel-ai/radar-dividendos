@@ -281,6 +281,9 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
 
     # decisões sobre extraordinários tomadas na app (conta Supabase), juntas às dos CSV
     conta = dec.ler_da_conta()
+    # as rejeições da conta NÃO mexem nos dados públicos: o aviso continua publicado e a app de
+    # quem decidiu esconde-o (sabe as suas decisões). Assim o site não mostra em que ações se decidiu.
+    rejeitados_publicos = rejeitados
     extras, rejeitados = dec.juntar(extras, rejeitados, conta)
     # assinaturas das decisões (para saber o que mudou de uma noite para a outra): ficam na
     # cópia local do motor (cache), NUNCA no meta.json, que é publicado no site (dados pessoais)
@@ -354,7 +357,7 @@ def executar(saida: Path, tickers: list[str] | None = None, limite: int | None =
             perfil = _em_portugues(cache.perfil(item["ticker_yahoo"], agora), termos)
             fx = f.obter_cambio(perfil.get("moeda"))
             r = analisar(item, precos, div, perfil, fx, hoje, p, extras.get(t),
-                         _cotacao_xtb(f, cache, item, agora), rejeitados.get(t))
+                         _cotacao_xtb(f, cache, item, agora), rejeitados_publicos.get(t))
             # a mesma empresa noutras bolsas/moedas da XTB (mesmo ISIN), com a versão em EUR primeiro
             if item.get("versoes_xtb"):
                 r["detalhe"]["versoes_xtb"] = item["versoes_xtb"]

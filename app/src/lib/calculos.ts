@@ -251,3 +251,18 @@ export function recalcular(a: Acao, p: Parametros, hoje: string): AcaoCalculada 
     perto_maximo_52s: pos['52s'] != null && pos['52s'] >= p.preco.limite_perto_maximo,
   }
 }
+
+/** Esconde os "possíveis extraordinários" que já decidiu na app (os dados públicos continuam a
+ *  mostrá-los, para não revelarem em que ações se decidiu). */
+export function semDecididos<T extends Pick<Acao, 'ticker' | 'extraordinarios_suspeitos' | 'avisos'>>(a: T, decisoes: Record<string, unknown>): T {
+  const ss = a.extraordinarios_suspeitos ?? []
+  if (!ss.length) return a
+  const pendentes = ss.filter(s => !decisoes[`${a.ticker}|${s.data}`])
+  if (pendentes.length === ss.length) return a
+  const avisos = a.avisos.filter(x => x.codigo !== 'possivel_extra')
+  if (pendentes.length) avisos.push({
+    codigo: 'possivel_extra',
+    texto: `${pendentes.length} possível(eis) dividendo(s) extraordinário(s), a confirmar (último: ${pendentes[pendentes.length - 1].data}). Confirme ou rejeite nas Definições.`,
+  })
+  return { ...a, extraordinarios_suspeitos: pendentes, avisos }
+}

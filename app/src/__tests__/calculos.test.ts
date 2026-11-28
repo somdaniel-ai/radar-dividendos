@@ -69,3 +69,23 @@ describe('formato português', () => {
     expect(pct(0.0625)).toBe('6,3%')
   })
 })
+
+describe('possíveis extraordinários já decididos na app', async () => {
+  const { semDecididos } = await import('../lib/calculos')
+  const a = {
+    ticker: 'KO',
+    extraordinarios_suspeitos: [{ data: '2025-03-01', valor: 1, extra_estimado: 0.5, motivo: 'x' }, { data: '2025-09-01', valor: 1, extra_estimado: 0.5, motivo: 'x' }],
+    avisos: [{ codigo: 'possivel_extra', texto: '2 possíveis…' }, { codigo: 'outro', texto: 'y' }],
+  }
+  it('esconde os decididos e acerta o aviso', () => {
+    const r = semDecididos(a as never, { 'KO|2025-03-01': { decisao: 'rejeitar' } }) as typeof a
+    expect(r.extraordinarios_suspeitos.map(s => s.data)).toEqual(['2025-09-01'])
+    expect(r.avisos.find(x => x.codigo === 'possivel_extra')?.texto).toMatch(/^1 possível/)
+  })
+  it('sem nenhum por decidir, o aviso desaparece', () => {
+    const r = semDecididos(a as never, { 'KO|2025-03-01': {}, 'KO|2025-09-01': {} }) as typeof a
+    expect(r.extraordinarios_suspeitos).toEqual([])
+    expect(r.avisos.map(x => x.codigo)).toEqual(['outro'])
+  })
+  it('sem decisões fica igual', () => expect(semDecididos(a as never, {})).toBe(a))
+})
