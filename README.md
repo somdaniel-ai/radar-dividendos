@@ -14,7 +14,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 | 3 | Universo completo da XTB | ✅ concluída |
 | 4 | Supabase: login e carteira | ✅ concluída |
 | 5 | Simulador, Meta de rendimento e Projeção | ✅ concluída |
-| 6 | Calendário, Alertas (Telegram) e "Atualizar agora" | 🚧 em curso (Calendário e Alertas feitos; "Atualizar agora" a instalar) |
+| 6 | Calendário, Alertas (Telegram) e "Atualizar agora" | ✅ concluída |
 | 7 | Afinações | ⏳ |
 
 ## Estrutura das pastas
@@ -55,7 +55,7 @@ Aplicação pessoal para analisar ações e ETFs de dividendos disponíveis na X
 
 Com sessão iniciada, o botão **⟳** no topo abre um painel com a hora dos dados e dois botões:
 - **Atualizar preços:** em segundos, pede ao Yahoo os preços do momento das ações da **carteira e dos favoritos** (no máximo 60) e os câmbios. A app recalcula o yield, o preço justo, a pontuação e o valor da carteira. Os preços novos ficam **só nesse aparelho** e são substituídos pela atualização seguinte dos dados. Só acontece quando se carrega no botão.
-- **Lançar atualização completa:** pede ao GitHub uma atualização como a da noite, com 30 minutos de dados (a carteira e os favoritos vão primeiro). Demora cerca de 40 minutos; o painel mostra o estado e, no fim, o botão "Recarregar a app". Não deixa lançar outra enquanto houver uma a correr.
+- **Lançar atualização completa:** pede ao GitHub uma atualização como a da noite, com 30 minutos de dados (a carteira e os favoritos vão primeiro). Demora cerca de 15 a 40 minutos (conforme o que já estiver na cache); o painel mostra o estado e, no fim, o botão "Recarregar a app". Não deixa lançar outra enquanto houver uma a correr.
 
 Funciona com duas **Edge Functions** do Supabase (código em `supabase/funcoes/`), instaladas pelo painel do Supabase (Edge Functions → Deploy a new function → Via Editor → colar o ficheiro → Deploy, com "Verify JWT with legacy secret" desligado, porque a verificação é feita no código):
 - `precos` só fala com o Yahoo. Não lê nem grava nada na base de dados.
